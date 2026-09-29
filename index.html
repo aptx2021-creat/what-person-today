@@ -1,0 +1,2295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="format-detection" content="telephone=no">
+<title>今天你是什么人 · 15题剧情人格测试</title>
+<meta name="description" content="跟着一天的剧情走完15个场景，看看今天你是什么人。测量内核基于大五人格，结果页包含五维剖面、四字母标签与完整人格报告。">
+<style>
+/* ============================================================
+   今天你是什么人 —— 设计系统
+   一天的光：页面底色随剧情推进，从破晓走到深夜
+   ============================================================ */
+
+:root{
+  /* 一天的色谱 */
+  --dawn:#E4EDF2;
+  --morning:#F1F3EA;
+  --noon:#FBF0DA;
+  --dusk:#F5E0D2;
+  --night:#2C3350;
+
+  /* 墨与纸 */
+  --ink:#1E2024;
+  --paper:#F7F6F2;
+
+  /* 唯一的两个强调色 */
+  --marker:#FFD84D;   /* 荧光笔黄：只用于"选中" */
+  --seal:#C8402F;     /* 印章红：只用于称号贴纸与类型名盖章 */
+  --mark-ink:#1E2024; /* 落在荧光笔黄上的字，始终是深色 */
+
+  /* 当前时段（由 data-stage 覆写） */
+  --bg:var(--dawn);
+  --line:#1E2024;
+  --soft:#C8D6E0;
+  --dim:#5A6470;
+
+  --frame:2.5px;
+  --r:2px;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+
+/* 一天的光：底色推进的同时，墨色也要跟着翻面，深夜才读得清 */
+body[data-stage="night"]{
+  --bg:var(--night);
+  --ink:#F2F3F8;
+  --line:#98A1CE;
+  --soft:#3E4770;
+  --dim:#9AA2C8;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+
+body{
+  background:#DDDCD6;
+  color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei",sans-serif;
+  font-size:15.5px;
+  line-height:1.9;
+  letter-spacing:.01em;
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+
+/* 手机容器：移动端满屏，桌面端呈现为一部手机 */
+.app{
+  position:relative;
+  width:100%;
+  max-width:480px;
+  margin:0 auto;
+  min-height:100vh;
+  min-height:100dvh;
+  background:var(--bg);
+  transition:background-color .7s var(--ease);
+  overflow-x:hidden;
+  isolation:isolate;
+}
+@media (min-width:520px){
+  body{padding:24px 0}
+  .app{
+    min-height:min(880px,calc(100dvh - 48px));
+    border-radius:14px;
+    box-shadow:0 1px 0 rgba(30,32,36,.18),0 18px 60px -20px rgba(30,32,36,.45);
+    overflow:hidden;
+  }
+}
+
+.view{display:none;padding:0 22px 40px;animation:none}
+.view.on{display:block}
+
+/* ---------- 顶部：日光弧线（进度即时间） ---------- */
+.sunarc{
+  position:sticky;top:0;z-index:6;
+  padding:14px 22px 6px;
+  background:linear-gradient(to bottom,var(--bg) 62%,transparent);
+  transition:background-color .7s var(--ease);
+}
+.sunarc svg{display:block;width:100%;height:44px;overflow:visible}
+.sunarc .rail{fill:none;stroke:var(--soft);stroke-width:2;stroke-linecap:round;transition:stroke .7s var(--ease)}
+.sunarc .fill{fill:none;stroke:var(--ink);stroke-width:2.5;stroke-linecap:round;
+  transition:stroke-dashoffset .55s var(--ease),stroke .7s var(--ease)}
+.sunarc .orb{transition:transform .55s var(--ease),fill .7s var(--ease)}
+.sunarc .orb-line{stroke:var(--ink);transition:stroke .7s var(--ease)}
+.sunarc .glyph{fill:var(--dim);transition:fill .7s var(--ease)}
+.sunarc .glyph.on{fill:var(--ink)}
+
+.arcfoot{
+  display:flex;justify-content:space-between;align-items:baseline;
+  font-size:12.5px;letter-spacing:.14em;color:var(--dim);
+  transition:color .7s var(--ease);padding:0 2px;
+}
+.arcfoot b{font-size:13.5px;letter-spacing:.06em;font-weight:800;color:var(--ink);transition:color .7s var(--ease)}
+
+/* ---------- 漫画格 ---------- */
+.comic{
+  position:relative;
+  margin:16px 0 20px;
+  border:var(--frame) solid var(--line);
+  border-radius:var(--r);
+  background:rgba(255,255,255,.5);
+  transition:border-color .7s var(--ease),background-color .7s var(--ease);
+  overflow:hidden;
+}
+[data-stage="night"] .comic{background:rgba(255,255,255,.06)}
+.comic svg{display:block;width:100%;height:auto}
+.sfx{
+  position:absolute;right:10px;bottom:6px;
+  font-size:13px;font-weight:900;letter-spacing:.06em;
+  color:var(--seal);
+  transform:rotate(-6deg);
+  text-shadow:1.5px 1.5px 0 rgba(255,255,255,.55);
+  pointer-events:none;
+}
+[data-stage="night"] .sfx{text-shadow:1.5px 1.5px 0 rgba(0,0,0,.35)}
+
+/* 长按彩蛋气泡 */
+.egg{
+  position:absolute;left:8px;top:8px;max-width:74%;
+  background:var(--ink);color:var(--bg);
+  font-size:12.5px;line-height:1.6;letter-spacing:.01em;
+  padding:7px 10px;border-radius:10px 10px 10px 2px;
+  opacity:0;transform:translateY(-4px) scale(.96);
+  transition:opacity .22s var(--ease),transform .22s var(--ease);
+  pointer-events:none;z-index:2;
+}
+.egg.on{opacity:1;transform:translateY(0) scale(1)}
+
+/* ---------- 旁白 ---------- */
+.scene-no{
+  display:flex;align-items:center;gap:9px;
+  font-size:12.5px;letter-spacing:.14em;color:var(--dim);
+  transition:color .7s var(--ease);margin-top:16px;
+}
+.scene-no .rule{
+  width:20px;height:2px;background:var(--dim);flex:none;
+  transition:background-color .7s var(--ease);
+}
+
+.narration{
+  margin:10px 0 0;
+  font-size:15.5px;line-height:1.95;
+  color:var(--ink);transition:color .7s var(--ease);
+  min-height:5.85em;
+}
+.narration .caret{
+  display:inline-block;width:2px;height:1em;vertical-align:-.12em;
+  background:var(--ink);margin-left:2px;
+  animation:blink .9s steps(1,end) infinite;
+}
+@keyframes blink{50%{opacity:0}}
+.skiphint{
+  font-size:12px;color:var(--dim);letter-spacing:.06em;
+  margin-top:2px;transition:color .7s var(--ease);
+}
+
+.question{
+  margin:18px 0 2px;font-weight:800;font-size:16px;line-height:1.7;
+  letter-spacing:-.01em;color:var(--ink);transition:color .7s var(--ease);
+}
+
+/* ---------- 选项 ---------- */
+.options{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+.opt{
+  position:relative;display:block;width:100%;text-align:left;
+  font:inherit;font-size:15px;line-height:1.65;color:var(--ink);
+  background:transparent;border:2px solid var(--line);border-radius:var(--r);
+  padding:13px 14px 13px 42px;
+  min-height:48px;cursor:pointer;
+  transition:transform .12s var(--ease),border-color .7s var(--ease),color .7s var(--ease),background-color .2s var(--ease);
+  overflow:hidden;
+}
+.opt .tag{
+  position:absolute;left:14px;top:50%;transform:translateY(-50%);
+  font-size:12.5px;font-weight:900;letter-spacing:.02em;color:var(--dim);
+  transition:color .2s var(--ease);z-index:1;
+}
+.opt .swipe{
+  position:absolute;left:6px;right:6px;top:6px;bottom:6px;z-index:0;
+  background:var(--marker);
+  transform:scaleX(0);transform-origin:left center;
+  transition:transform .34s var(--ease);
+  border-radius:2px;
+}
+.opt > span{position:relative;z-index:1}
+.opt > i.swipe{position:absolute;z-index:0}
+.opt:active{transform:scale(.985)}
+.opt.sel{border-color:var(--ink);color:var(--mark-ink)}
+.opt.sel .swipe{transform:scaleX(1)}
+.opt.sel .tag{color:var(--mark-ink)}
+.opt[disabled]{cursor:default;opacity:.42}
+.opt.sel[disabled]{opacity:1}
+
+.navrow{display:flex;align-items:center;gap:12px;margin-top:18px}
+.back{
+  font:inherit;font-size:13.5px;color:var(--dim);background:none;border:none;
+  padding:10px 2px;cursor:pointer;letter-spacing:.04em;min-height:44px;
+  transition:color .7s var(--ease);
+}
+.back[hidden]{visibility:hidden}
+
+/* ---------- 剧情过渡回应 ---------- */
+.beat{
+  position:fixed;left:0;right:0;bottom:0;top:0;margin:0 auto;max-width:480px;
+  background:var(--bg);display:flex;align-items:flex-end;
+  padding:0 22px 26px;z-index:8;
+  opacity:0;pointer-events:none;transition:opacity .25s var(--ease),background-color .7s var(--ease);
+}
+.beat.on{opacity:1}
+.beat p{
+  margin:0;font-size:15px;line-height:1.8;
+  border-left:3px solid var(--seal);padding-left:12px;
+  color:var(--ink);transition:color .7s var(--ease);
+  animation:beatin .38s var(--ease) both;
+}
+@keyframes beatin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ============================================================
+   封面
+   ============================================================ */
+.cover{position:relative;padding-top:40px}
+.eyebrow{
+  font-size:12.5px;letter-spacing:.16em;color:var(--dim);
+  transition:color .7s var(--ease);
+}
+.brushwrap{position:relative;margin:14px 0 0}
+.brushwrap svg{display:block;width:100%;height:auto;overflow:visible}
+.brush-text{
+  font-size:47px;font-weight:900;letter-spacing:-.045em;
+  fill:var(--ink);transition:fill .7s var(--ease);
+  filter:url(#roughink);
+}
+.cover-lede{
+  margin:26px 0 0;font-size:15.5px;line-height:1.95;color:var(--ink);
+  transition:color .7s var(--ease);
+}
+.cover-lede b{font-weight:800;box-shadow:inset 0 -.5em 0 var(--marker)}
+
+.cta{
+  display:block;width:100%;margin:26px 0 0;
+  font:inherit;font-size:16.5px;font-weight:800;letter-spacing:.02em;
+  color:var(--mark-ink);background:var(--marker);
+  border:2.5px solid var(--ink);border-radius:var(--r);
+  padding:15px 18px;min-height:52px;cursor:pointer;
+  transition:transform .12s var(--ease),box-shadow .18s var(--ease);
+  box-shadow:4px 4px 0 var(--ink);
+}
+.cta:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink)}
+.cta.ghost{
+  background:transparent;color:var(--ink);box-shadow:none;
+  border-width:2px;font-size:14.5px;font-weight:700;
+}
+[data-stage="night"] .cta.ghost{color:var(--ink)}
+
+.cover-meta{
+  margin-top:14px;display:flex;justify-content:space-between;gap:10px;
+  font-size:12.5px;color:var(--dim);letter-spacing:.04em;
+  transition:color .7s var(--ease);
+}
+.privacy{
+  margin-top:18px;font-size:12.5px;line-height:1.75;color:var(--dim);
+  border-top:1.5px dashed var(--soft);padding-top:12px;
+  transition:color .7s var(--ease),border-color .7s var(--ease);
+}
+
+/* 封面二维码 */
+.qrbox{
+  margin-top:20px;display:flex;align-items:center;gap:14px;
+  border:2px solid var(--line);border-radius:var(--r);padding:12px;
+  transition:border-color .7s var(--ease);
+}
+.qrbox canvas{
+  width:84px;height:84px;flex:none;image-rendering:pixelated;
+  background:#fff;border-radius:2px;
+}
+.qrbox canvas.hide{display:none}
+.qrbox .qrcopy{font-size:12.5px;line-height:1.7;color:var(--dim);transition:color .7s var(--ease)}
+.qrbox .qrcopy b{display:block;color:var(--ink);font-size:13.5px;font-weight:800;margin-bottom:2px;transition:color .7s var(--ease)}
+.qrset{
+  font:inherit;font-size:12.5px;color:var(--ink);background:none;
+  border:none;border-bottom:1.5px solid var(--ink);padding:2px 0;
+  cursor:pointer;letter-spacing:.02em;
+}
+
+/* ============================================================
+   结果页
+   ============================================================ */
+.stampwrap{position:relative;padding:26px 0 6px;text-align:center}
+.typecode{
+  font-size:13px;letter-spacing:.34em;color:var(--dim);
+  transition:color .7s var(--ease);
+}
+.stamp{
+  display:inline-block;margin:6px 0 0;position:relative;
+  padding:6px 14px 8px;
+  border:3.5px solid var(--seal);border-radius:4px;
+  color:var(--seal);
+  transform:rotate(-1.6deg);
+  opacity:0;
+}
+.stamp.on{animation:stampin .62s cubic-bezier(.2,1.5,.4,1) both}
+@keyframes stampin{
+  0%{opacity:0;transform:rotate(-9deg) scale(1.8)}
+  62%{opacity:1;transform:rotate(-1.2deg) scale(.96)}
+  100%{opacity:1;transform:rotate(-1.6deg) scale(1)}
+}
+.stamp .tname{
+  display:block;font-size:26px;font-weight:900;letter-spacing:-.02em;
+  line-height:1.28;transform:rotate(.4deg);
+}
+.stamp::after{
+  content:"";position:absolute;inset:-3.5px;border:1.5px solid var(--seal);
+  opacity:.35;border-radius:4px;transform:rotate(1.1deg);
+}
+
+.sealtag{
+  display:inline-block;margin:18px 6px 0;
+  background:var(--seal);color:#FFF6F2;
+  font-size:13px;font-weight:800;letter-spacing:.06em;
+  padding:5px 11px;border-radius:2px;
+  transform:rotate(-2deg);
+  box-shadow:2px 2px 0 rgba(30,32,36,.22);
+}
+.sealwhy{
+  margin:12px 0 0;font-size:12.5px;line-height:1.8;color:var(--dim);
+  transition:color .7s var(--ease);
+}
+
+/* 五维天气栏 */
+.weather{
+  margin:22px 0 0;border-top:2.5px solid var(--line);
+  border-bottom:2.5px solid var(--line);
+  transition:border-color .7s var(--ease);
+}
+.wrow{
+  display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;
+  padding:11px 2px;border-bottom:1.5px solid var(--soft);
+  transition:border-color .7s var(--ease);
+}
+.wrow:last-child{border-bottom:none}
+.wrow svg{display:block;width:24px;height:24px}
+.wname{font-size:13.5px;color:var(--ink);transition:color .7s var(--ease)}
+.wname small{display:block;font-size:11.5px;color:var(--dim);letter-spacing:.04em;transition:color .7s var(--ease)}
+.wbar{
+  margin-top:6px;height:7px;border:1.5px solid var(--line);border-radius:99px;
+  position:relative;overflow:hidden;transition:border-color .7s var(--ease);
+}
+.wbar i{
+  position:absolute;left:0;top:0;bottom:0;width:0;
+  background:var(--ink);transition:width 1s var(--ease),background-color .7s var(--ease);
+}
+.wbar em{
+  position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--soft);
+  left:50%;transition:background-color .7s var(--ease);
+}
+.wpct{font-size:14px;font-weight:800;letter-spacing:.02em;text-align:right;min-width:52px}
+.wpct small{display:block;font-size:10.5px;font-weight:600;color:var(--dim);letter-spacing:.06em;transition:color .7s var(--ease)}
+.wrow.swing .wpct small{color:var(--seal)}
+
+/* 报告块 */
+.block{margin-top:30px}
+.block h3{
+  margin:0 0 8px;font-size:12.5px;letter-spacing:.16em;color:var(--dim);
+  font-weight:700;transition:color .7s var(--ease);
+}
+.block p{margin:0 0 12px}
+.lead{font-size:16px;line-height:1.9}
+.quote{
+  margin:16px 0 0;padding:14px 16px;
+  border-left:4px solid var(--marker);
+  background:rgba(255,216,77,.16);
+  color:var(--ink);font-size:15px;font-weight:700;line-height:1.8;
+}
+.twocol{display:grid;grid-template-columns:1fr;gap:0}
+.lis{margin:0;padding:0;list-style:none}
+.lis li{
+  position:relative;padding-left:20px;margin-bottom:9px;font-size:14.5px;line-height:1.8;
+}
+.lis li::before{
+  content:"";position:absolute;left:2px;top:.78em;
+  width:8px;height:8px;background:var(--ink);
+  transition:background-color .7s var(--ease);
+}
+.lis.no li::before{background:transparent;border:2px solid var(--seal)}
+.pair{display:flex;gap:10px;margin-bottom:10px;font-size:14.5px;line-height:1.8}
+.pair .k{
+  flex:none;font-size:12px;font-weight:800;letter-spacing:.08em;
+  border:1.5px solid var(--line);border-radius:2px;height:22px;line-height:19px;
+  padding:0 6px;margin-top:5px;transition:border-color .7s var(--ease);
+}
+
+.finerprint{
+  margin-top:30px;font-size:12px;line-height:1.85;color:var(--dim);
+  border-top:1.5px dashed var(--soft);padding-top:14px;
+  transition:color .7s var(--ease),border-color .7s var(--ease);
+}
+
+/* 结果页操作区 */
+.actions{margin-top:26px;display:flex;flex-direction:column;gap:12px}
+.btnrow{display:flex;gap:10px}
+.btnrow .cta{margin:0}
+
+/* 分享卡片预览 */
+.cardpreview{
+  margin-top:22px;border:2px solid var(--line);border-radius:var(--r);
+  overflow:hidden;background:var(--paper);
+  transition:border-color .7s var(--ease);
+}
+.cardpreview canvas{display:none}
+.cardpreview img{display:block;width:100%;height:auto}
+.cardhint{
+  font-size:12px;color:var(--dim);padding:10px 12px;border-top:1.5px dashed var(--soft);
+  transition:color .7s var(--ease),border-color .7s var(--ease);
+}
+
+/* ============================================================
+   遮罩层：揭晓 / 关于 / 分享设置
+   ============================================================ */
+.overlay{
+  position:fixed;inset:0;z-index:40;display:none;
+  background:rgba(30,32,36,.55);
+  align-items:flex-end;justify-content:center;
+}
+.overlay.on{display:flex}
+.sheet{
+  width:100%;max-width:480px;max-height:88vh;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  background:var(--paper);color:var(--ink);
+  border-radius:14px 14px 0 0;
+  padding:22px 22px calc(26px + env(safe-area-inset-bottom));
+  animation:sheetup .32s var(--ease) both;
+}
+@keyframes sheetup{from{transform:translateY(22px);opacity:.4}to{transform:none;opacity:1}}
+.sheet h4{margin:0 0 10px;font-size:18px;font-weight:900;letter-spacing:-.01em}
+.sheet h5{margin:20px 0 6px;font-size:13px;letter-spacing:.1em;color:var(--dim)}
+.sheet p{margin:0 0 10px;font-size:14px;line-height:1.85}
+.sheet .close{
+  display:block;width:100%;margin-top:20px;font:inherit;font-size:15px;font-weight:800;
+  background:var(--ink);color:var(--paper);border:none;border-radius:var(--r);
+  padding:14px;cursor:pointer;min-height:48px;
+}
+.inputrow{display:flex;gap:8px;margin-top:6px}
+.inputrow input{
+  flex:1;font:inherit;font-size:14px;padding:12px 12px;min-height:46px;
+  border:2px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink);
+  min-width:0;
+}
+.inputrow button{
+  font:inherit;font-size:14px;font-weight:800;padding:0 16px;min-height:46px;
+  background:var(--marker);border:2px solid var(--ink);border-radius:var(--r);
+  cursor:pointer;flex:none;
+}
+.refs{font-size:12px;line-height:1.8;color:var(--dim);margin:0;padding-left:18px}
+.refs li{margin-bottom:5px}
+
+/* 揭晓遮罩 */
+#reveal{background:var(--night);align-items:center}
+#reveal .rvtext{
+  color:#F2F3F8;font-size:15px;letter-spacing:.16em;text-align:center;
+  animation:rvpulse 1.1s var(--ease) infinite alternate;
+}
+@keyframes rvpulse{from{opacity:.42}to{opacity:1}}
+
+/* ---------- 漫画格里的手绘线条 ---------- */
+.comic svg .ln{fill:none;stroke:var(--line);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;transition:stroke .7s var(--ease)}
+.comic svg .ln2{fill:none;stroke:var(--line);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;transition:stroke .7s var(--ease)}
+.comic svg .lt{fill:none;stroke:var(--soft);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .7s var(--ease)}
+.comic svg .dash{fill:none;stroke:var(--line);stroke-width:2;stroke-dasharray:5 6;stroke-linecap:round;opacity:.5}
+.comic svg .fl{fill:var(--soft);stroke:none;transition:fill .7s var(--ease)}
+.comic svg .ink{fill:var(--line);stroke:none;transition:fill .7s var(--ease)}
+.comic svg .ac{fill:var(--marker);stroke:none}
+.comic svg .acl{fill:none;stroke:var(--marker);stroke-width:3.4;stroke-linecap:round}
+.comic svg .slt{fill:none;stroke:var(--seal);stroke-width:2.5;stroke-linecap:round}
+.comic svg .sfl{fill:var(--seal);stroke:none}
+
+/* 选择会改变画面 */
+.comic svg .vpos,.comic svg .vneg,.comic svg .vpos2,.comic svg .vneg2{
+  opacity:0;transition:opacity .45s var(--ease),transform .45s var(--ease)}
+.comic[data-v="pos"] svg .vpos,.comic[data-v="pos"] svg .vpos2{opacity:1}
+.comic[data-v="neg"] svg .vneg,.comic[data-v="neg"] svg .vneg2{opacity:1}
+.comic svg .drift{transition:transform .5s var(--ease)}
+.comic[data-v="pos"] svg .drift{transform:translateY(-5px)}
+.comic[data-v="neg"] svg .drift{transform:translateY(4px)}
+.comic svg .breath{animation:breathe 4.2s var(--ease) infinite alternate}
+@keyframes breathe{from{transform:translateY(0)}to{transform:translateY(-3px)}}
+
+/* 结果页的特质解读 */
+.tblock{margin:0 0 18px;padding-bottom:15px;border-bottom:1.5px solid var(--soft);transition:border-color .7s var(--ease)}
+.tblock:last-child{border-bottom:none;padding-bottom:0}
+.tblock h4{margin:0 0 5px;font-size:15px;font-weight:800;letter-spacing:-.01em}
+.tblock .pole{
+  display:inline-block;font-size:11.5px;font-weight:800;letter-spacing:.06em;
+  border:1.5px solid var(--line);border-radius:2px;padding:0 5px;margin-left:6px;
+  vertical-align:2px;transition:border-color .7s var(--ease);
+}
+.tblock p{margin:0;font-size:14.5px;line-height:1.85}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+  .narration .caret{display:none}
+}
+
+/* 键盘可见焦点 */
+:focus-visible{outline:3px solid var(--seal);outline-offset:2px}
+</style>
+</head>
+<body data-stage="dawn">
+
+<div class="app" id="app">
+
+  <!-- ===================== 封面 ===================== -->
+  <section class="view on cover" id="v-cover">
+    <div class="eyebrow">一天里 15 个场景，大约 3 分钟</div>
+
+    <div class="brushwrap">
+      <svg viewBox="0 0 380 132" role="img" aria-label="今天你是什么人">
+        <defs>
+          <filter id="roughink" x="-6%" y="-6%" width="112%" height="112%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.032" numOctaves="2" seed="7" result="n"/>
+            <feDisplacementMap in="SourceGraphic" in2="n" scale="3.1" xChannelSelector="R" yChannelSelector="G"/>
+          </filter>
+        </defs>
+        <text class="brush-text" x="0" y="46">今天你是</text>
+        <text class="brush-text" x="0" y="112">什么人</text>
+        <path d="M4 62 C 96 54, 186 60, 268 53" fill="none" stroke="var(--marker)" stroke-width="9" stroke-linecap="round" opacity=".85"/>
+        <path d="M262 118 c 22 -5, 44 -6, 66 -2" fill="none" stroke="var(--seal)" stroke-width="3" stroke-linecap="round"/>
+        <path d="M330 30 l 3.4 8.4 8.6 3.4 -8.6 3.4 -3.4 8.4 -3.4 -8.4 -8.6 -3.4 8.6 -3.4 z" fill="var(--ink)" opacity=".8"/>
+        <circle cx="352" cy="76" r="4.4" fill="none" stroke="var(--ink)" stroke-width="2.4" opacity=".7"/>
+      </svg>
+    </div>
+
+    <p class="cover-lede">
+      从闹钟响到深夜放下手机，你会走完<b>平凡又不平凡的一天</b>。没有标准答案，选你第一反应想选的那个就行——第一反应比正确答案更值钱。
+    </p>
+
+    <button class="cta" id="btn-start">开始今天</button>
+
+    <div class="cover-meta">
+      <span>15 题，每题 4 个选项</span>
+      <span id="cover-progress-note">进度随一天的光推进</span>
+    </div>
+
+    <div class="qrbox">
+      <canvas id="qr-cover" width="252" height="252" aria-label="分享二维码"></canvas>
+      <div class="qrcopy">
+        <b>把今天的你传下去</b>
+        <span id="qr-cover-note">正在准备二维码…</span>
+        <div style="margin-top:6px"><button class="qrset" id="btn-setshare">设置分享链接</button></div>
+      </div>
+    </div>
+
+    <p class="privacy">
+      这个页面不上传、不保存你的任何作答：所有计算都在你手机里完成，关掉页面就什么也不剩。唯一的例外是你在“设置分享链接”里填的那个网址，它只存在你自己的浏览器里。
+    </p>
+
+    <div class="block" style="margin-top:22px">
+      <button class="cta ghost" id="btn-about-1">这个测试凭什么算严谨？</button>
+    </div>
+  </section>
+
+  <!-- ===================== 剧情 ===================== -->
+  <section class="view" id="v-story">
+    <div class="sunarc">
+      <svg viewBox="0 0 336 44" aria-hidden="true">
+        <path class="rail" id="arc-rail" d="M12 34 C 88 6, 248 6, 324 34"/>
+        <path class="fill" id="arc-fill" d="M12 34 C 88 6, 248 6, 324 34"/>
+        <g id="arc-orb">
+          <circle class="orb" cx="12" cy="34" r="7" fill="var(--marker)"/>
+          <circle class="orb-line" cx="12" cy="34" r="7" fill="none" stroke-width="2"/>
+        </g>
+        <g class="glyph" id="glyph-sun">
+          <circle cx="12" cy="34" r="12" fill="none" stroke="var(--dim)" stroke-width="2" opacity=".55"/>
+        </g>
+        <g class="glyph" id="glyph-moon">
+          <path d="M330 26 a10 10 0 1 0 0 16 a8 8 0 1 1 0 -16 z" stroke="none"/>
+        </g>
+      </svg>
+      <div class="arcfoot">
+        <b id="arc-step">01 / 15</b>
+        <span id="arc-clock">06:40</span>
+      </div>
+    </div>
+
+    <div class="scene-no">
+      <span class="rule" aria-hidden="true"></span><span id="sc-label">破晓</span>
+    </div>
+
+    <div class="comic" id="comic">
+      <div class="egg" id="egg"></div>
+      <div id="comic-art"></div>
+      <div class="sfx" id="sc-sfx"></div>
+    </div>
+
+    <p class="narration" id="narration"></p>
+    <div class="skiphint" id="skiphint">点击文字可以跳过打字</div>
+
+    <h2 class="question" id="question"></h2>
+    <ul class="options" id="options"></ul>
+
+    <div class="navrow">
+      <button class="back" id="btn-back" hidden>← 上一题</button>
+    </div>
+
+    <div class="beat" id="beat"><p id="beat-text"></p></div>
+  </section>
+
+  <!-- ===================== 结果 ===================== -->
+  <section class="view" id="v-result">
+    <div class="stampwrap">
+      <div class="typecode" id="r-code"></div>
+      <div class="stamp" id="r-stamp"><span class="tname" id="r-tname"></span></div>
+      <div><span class="sealtag" id="r-title"></span></div>
+      <p class="sealwhy" id="r-titlewhy"></p>
+    </div>
+
+    <div class="weather" id="r-weather"></div>
+
+    <div class="block">
+      <h3>你的今天，大概长这样</h3>
+      <p class="lead" id="r-main"></p>
+      <blockquote class="quote" id="r-quote"></blockquote>
+    </div>
+
+    <div class="block" id="r-traits"></div>
+
+    <div class="block">
+      <h3>别人眼里你的好处</h3>
+      <ul class="lis" id="r-good"></ul>
+      <h3 style="margin-top:20px">以及你不太愿意承认的部分</h3>
+      <ul class="lis no" id="r-bad"></ul>
+    </div>
+
+    <div class="block">
+      <h3>和这样的你相处</h3>
+      <div id="r-how"></div>
+    </div>
+
+    <div class="actions">
+      <button class="cta" id="btn-card">保存我的今日人格日报</button>
+      <div class="cardpreview">
+        <img id="cardimg" alt="今日人格日报：你的类型与五维天气">
+        <canvas id="card" width="1080" height="1440"></canvas>
+        <div class="cardhint" id="card-hint">长按上面这张图可以保存到相册；在微信里长按同样可以保存或转发。</div>
+      </div>
+      <div class="btnrow">
+        <button class="cta ghost" id="btn-again">重新测一次</button>
+        <button class="cta ghost" id="btn-about-2">关于本测试</button>
+      </div>
+    </div>
+
+    <p class="finerprint" id="r-fine"></p>
+  </section>
+
+</div>
+
+<!-- ===================== 遮罩层 ===================== -->
+<div class="overlay" id="ov-about">
+  <div class="sheet">
+    <h4>这个测试凭什么算严谨？</h4>
+
+    <h5>它测的不是 MBTI</h5>
+    <p>这个测试的测量内核是<strong>大五人格模型</strong>（Big Five）：外向性、开放性、尽责性、宜人性、情绪稳定性。它是当代人格心理学里实证支持最充分的框架，用<strong>连续分数</strong>描述人，而不是把人劈成两半。题目结构参考了学术界常用的 15 题短量表思路（BFI-2-XS 一类的短式量表），这也是为什么它刚好是 15 题。</p>
+
+    <h5>题目是怎么写的</h5>
+    <p>每条题目只测一个特质，不出现“又这样又那样”的双重问题；题目钉在<strong>具体行为</strong>上（“把被子一拉再睡七分钟”），而不是抽象自评（“我随性”）；每个特质都包含一道反向计分的题；四个选项的权重是 +2 / +1 / −1 / −2，<strong>不存在零权重的“都行”选项</strong>，任何作答都在提供信息。四个选项在“看起来是否体面”上做了平衡，不给你一个明显更正确的答案。</p>
+
+    <h5>那四个字母是什么</h5>
+    <p>结果页顶部的四字母标签是<strong>从大五分数映射出来的记忆锚点</strong>，不是测量结论：E/I 对应外向性（这一条相关较强，r≈0.7），N/S 对应开放性、F/T 对应宜人性、J/P 对应尽责性（这三条都只有中等相关，r≈0.3–0.5）。所以请以五维百分比为主，四字母只是方便你跟朋友对暗号。</p>
+
+    <h5>它的局限，说在前面</h5>
+    <p>第一，15 题属于短量表，信度大约在 0.65–0.75 之间，意味着它足够用来描述当下，但不够用来定义你。第二，人格特质在连续量表上是相对稳定的，但<strong>单次作答会受当天心情影响</strong>，隔两周再测出现浮动是正常的，不是测试坏了。第三，MBTI 式的“把人分成 16 类”在心理测量学上一直有争议：它把连续变量切成两段，会丢掉大量信息，重测时会有相当比例的人换类型。这个页面保留四字母标签，是因为它好记好玩，但主结果始终是五维分数。第四，这不是临床诊断工具，不能用来评估心理健康状况。</p>
+
+    <h5>关于隐藏称号</h5>
+    <p>隐藏称号不是随机抽的。规则是：先看你五维里<strong>偏离 50% 最远</strong>的那一维（如果并列，按外向性→开放性→尽责性→宜人性→情绪稳定性的顺序取第一个），再看你在这一维三道题上的<strong>作答跨度</strong>——跨度 ≤1 记作“坚定”，≥2 记作“摇摆”。5 个特质 × 2 个方向 × 2 种作答风格共 20 种组合，归到 10 个称号里。同样的作答永远得到同样的称号。</p>
+
+    <h5>关于这个页面</h5>
+    <p>所有计算都在你的浏览器里完成，不联网、不上传、不保存作答。页面不加载任何外部字体、图片或脚本，断网也能用。</p>
+
+    <h5>参考文献</h5>
+    <ol class="refs">
+      <li>Goldberg, L. R. (1999). A broad-bandwidth, public domain, personality inventory measuring the lower-level facets of several five-factor models. <em>Personality Psychology in Europe, 7</em>, 7–28.</li>
+      <li>Soto, C. J., &amp; John, O. P. (2017). The next Big Five Inventory (BFI-2): Developing and assessing a hierarchical model with 15 facets. <em>Journal of Personality and Social Psychology, 113</em>(1), 117–143.</li>
+      <li>McCrae, R. R., &amp; Costa, P. T. (1987). Validation of the five-factor model of personality across instruments and observers. <em>Journal of Personality and Social Psychology, 52</em>(1), 81–90.</li>
+      <li>Forer, B. R. (1949). The fallacy of personal validation: A classroom demonstration of gullibility. <em>Journal of Abnormal and Social Psychology, 44</em>(1), 118–123.</li>
+      <li>Pittenger, D. J. (1993). Measuring the MBTI… and coming up short. <em>Journal of Career Planning and Employment, 54</em>(1), 48–52.</li>
+    </ol>
+
+    <button class="close" id="btn-about-close">知道了</button>
+  </div>
+</div>
+
+<div class="overlay" id="ov-share">
+  <div class="sheet">
+    <h4>设置分享链接</h4>
+    <p>二维码会指向你填的这个网址——把页面部署到哪里，就填哪个地址。留空则使用当前页面地址；如果当前是本地文件（file://），二维码无法生成，请先上传到任意静态托管再回来填写。</p>
+    <div class="inputrow">
+      <input id="share-url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…">
+      <button id="btn-share-save">保存</button>
+    </div>
+    <p style="margin-top:10px;color:var(--dim);font-size:12.5px" id="share-status"></p>
+    <p style="margin-top:6px;color:var(--dim);font-size:12.5px">这个链接只会存在你自己的浏览器里（localStorage），不会发送到任何地方。</p>
+    <button class="close" id="btn-share-close">关闭</button>
+  </div>
+</div>
+
+<div class="overlay" id="reveal">
+  <div class="rvtext">正在把今天折起来…</div>
+</div>
+
+<script id="core">
+/* ============================================================
+   数据层：五维定义、15 个场景、16 型报告、隐藏称号
+   全部为纯数据 + 纯函数，不触碰 DOM
+   ============================================================ */
+
+/* 五个特质。hi = 正向一极，lo = 负向一极（对应选项权重正负） */
+const TRAITS = [
+  {
+    k: 'EXT', name: '外向性', hi: 'E', lo: 'I',
+    hiName: '由人充电', loName: '由安静充电',
+    hiText: '你的能量来自人。独处你也能过，但让你回血的是有人跟你说话、有回应、有来有往。你在热闹里比在安静里更像自己，也更容易在人群里突然冒出一个好主意。',
+    loText: '你的能量来自安静。你不是怕人，你只是社交完需要一个人待一会儿把电补回来。对你来说最理想的聚会，是一屋子人里也有一个可以不用说话的位置。'
+  },
+  {
+    k: 'OPE', name: '开放性', hi: 'N', lo: 'S',
+    hiName: '想尝新的', loName: '偏爱熟的',
+    hiText: '你对“没见过的东西”有一种天然胃口。新口味、新概念、新方案都让你有点兴奋，你的知识面很杂，但杂得很有意思。你不太受“一直都这样”这句话的约束。',
+    loText: '你偏好熟悉和确定。老地方、老口味、走过的路让你安心，你不是没有好奇心，你只是觉得没坏的东西不用急着换。你的判断来自经验，而不是来自想象。'
+  },
+  {
+    k: 'CON', name: '尽责性', hi: 'J', lo: 'P',
+    hiName: '心里有清单', loName: '到时候再说',
+    hiText: '你心里有一张清单。事情有先后、有截止时间、有“做完”的状态。你靠谱，是因为你受不了事情一直悬在那儿。别人临时改计划，你嘴上说没事，心里已经重新排了一遍。',
+    loText: '你活得比大多数人松弛。计划赶不上变化，那就到时候再说——这不是懒，是你真的不容易被意外打乱。代价是有些事总要拖到最后一刻，而那一刻的你格外痛苦。'
+  },
+  {
+    k: 'AGR', name: '宜人性', hi: 'F', lo: 'T',
+    hiName: '先想别人', loName: '先说事实',
+    hiText: '你习惯先想别人。别人的情绪你能接收到，也很容易跟着一起起伏，所以很多人愿意跟你讲心事。你的温柔是真的，只是要记得给自己也留一点——你的感受同样算数。',
+    loText: '你更相信道理而不是气氛。该说的话你会说，哪怕当下不好听。你不是不在乎，你只是觉得把问题讲清楚，才是真的对对方好。你讨厌让人猜，也讨厌自己猜。'
+  },
+  {
+    k: 'STA', name: '情绪稳定性', hi: 'S', lo: 'V',
+    hiName: '有减震器', loName: '灵敏度高',
+    hiText: '你心里有个减震器。事情来了会晃一下，但很快回正。别人常觉得你“好像什么都不放在心上”，其实你只是恢复得快，而不是没有感觉。',
+    loText: '你的感受系统灵敏度很高。一句话、一个眼神、一件没做好的小事，都会在心里留下痕迹。这让你更能理解别人，也让你更容易累——你需要比别人更多的安静来消化一天。'
+  }
+];
+
+/* 15 个场景。trait = 测哪个特质，w 的符号 = 倾向哪一极（正号倾向 hi） */
+const STORY = [
+  {
+    n: 1, stage: 'dawn', label: '破晓', clock: '06:40', trait: 'EXT',
+    art: 'alarm', sfx: '嘀——嘀——',
+    egg: '其实你设了三个闹钟，对外只说一个。',
+    narr: '闹钟响到第三遍。窗帘缝里漏进来一条很薄的光，正好落在你昨晚扔在椅背上的外套上。手机在枕头边又震了一下——群里有人半夜发了消息，现在二十七条未读。',
+    q: '你摸到手机的那一秒，手指往哪儿去？',
+    opts: [
+      { t: '先点开群，看看这帮人半夜又在聊什么', w: 2, b: '你躺着把二十七条从头刷到尾，最后一条停在三点十七分。你没看懂他们在聊什么，但你心情不错。' },
+      { t: '先看私信，有没有人专门找我', w: 1, b: '私信里只有一条外卖红包。你笑了一下，又有点想叹气。' },
+      { t: '顺手把所有红点划掉，然后放下手机', w: -1, b: '红点消失了，世界安静了。你多躺了三分钟，这三分钟是你自己的。' },
+      { t: '关掉全部通知，今天不想被任何人找到', w: -2, b: '通知关掉的那一下，你感到了今天第一次真正的轻松。' }
+    ]
+  },
+  {
+    n: 2, stage: 'dawn', label: '破晓', clock: '07:05', trait: 'OPE',
+    art: 'closet', sfx: '哗啦',
+    egg: '衣柜左边那件，是“不想被看见”的你。',
+    narr: '衣柜门开着，你站在它面前，像站在一道没有标准答案的题前面。左边是那件穿了三年的灰色卫衣，右边是上个月买回来、吊牌还没拆的衬衫。',
+    q: '你的手伸向哪一边？',
+    opts: [
+      { t: '卫衣。舒服最重要，反正没人记得我穿过什么', w: -1, b: '你把卫衣套上，镜子都不用照。熟悉的感觉真好。' },
+      { t: '衬衫。今天想换个活法，哪怕只是穿得不一样', w: 2, b: '衬衫有点凉。你对着镜子多看了两秒——嗯，今天不太一样。' },
+      { t: '还是老样子吧，穿新的总有种被人盯着看的感觉', w: -2, b: '你换回老样子，出门时脚步快了一点，好像怕被谁叫住。' },
+      { t: '衬衫，但配的还是那双旧鞋，混搭一下', w: 1, b: '一半新一半旧，你在电梯里低头看了看，觉得这个搭配有点像你自己。' }
+    ]
+  },
+  {
+    n: 3, stage: 'dawn', label: '破晓', clock: '08:10', trait: 'STA',
+    art: 'metro', sfx: '轰——',
+    egg: '鞋子上的那个印子，你其实偷偷擦过。',
+    narr: '地铁进站，风把所有头发往后吹。你被挤在门口，包里那杯豆浆晃得厉害。前面的人踩了你一脚，没回头，也没道歉。',
+    q: '这一刻你心里发生了什么？',
+    opts: [
+      { t: '没什么，地铁嘛，谁都急', w: 2, b: '你往里挪了半步，把豆浆换到靠里的手。这件事到此结束。' },
+      { t: '有点不爽，但两站之后就忘了', w: 1, b: '你皱了皱眉，两站之后你在想中午吃什么，就再没想起来。' },
+      { t: '会在心里把这件事翻来覆去想一会儿', w: -1, b: '你盯着那只鞋看了一会儿，又觉得自己有点小气，于是更烦了。' },
+      { t: '一整天都会记得这只鞋上的脚印', w: -2, b: '到了公司，你低头看了一眼那只鞋。你知道这不重要，但你就是记得。' }
+    ]
+  },
+  {
+    n: 4, stage: 'morning', label: '上午', clock: '09:30', trait: 'CON',
+    art: 'desk', sfx: '叮',
+    egg: '“那个东西”到底是哪个东西，你也没敢问。',
+    narr: '刚坐下，屏幕右下角弹出一条消息：“那个东西今天能给吗？”发送时间是九点零二，你九点十二才坐下。你连对方要的是哪个“东西”都还没完全确定。',
+    q: '你的第一反应是什么？',
+    opts: [
+      { t: '先回一句“今天给”，然后马上把今天要做的事排一遍', w: 2, b: '你回完消息，打开备忘录列了六条。列完你就有点后悔了。' },
+      { t: '回“我看下进度，中午前答复”，然后打开文档', w: 1, b: '你给自己留了半天的余地，这半天你会一直惦记着它。' },
+      { t: '先不回，等把手上这件事做完再说', w: -1, b: '你把弹窗关掉，继续做手上的事。四十分钟后你才想起来还没回。' },
+      { t: '关掉弹窗。它又不会自己消失，但它现在确实可以消失', w: -2, b: '弹窗没了，世界清净了三分钟，然后你听到自己心里有个声音说“完了”。' }
+    ]
+  },
+  {
+    n: 5, stage: 'morning', label: '上午', clock: '10:40', trait: 'EXT',
+    art: 'meeting', sfx: '……',
+    egg: '投影仪的光落在脸上，你其实有一点好看。',
+    narr: '会上，领导说了个名字。是你的名字。你抬起头，会议室里十几双眼睛转过来，投影的光落在你脸上。其实问题不难，你甚至隐约知道答案。',
+    q: '散会之后，你发现自己——',
+    opts: [
+      { t: '还在回放刚才自己说的那句话，第三遍，而且想好了更好的说法', w: -2, b: '你在茶水间又默念了一遍更好的版本。可惜那场会已经结束了。' },
+      { t: '会想一下“刚才是不是说得太急了”', w: -1, b: '你想了一下，觉得还行，然后继续想。' },
+      { t: '已经翻篇了，脑子里是下一件事', w: 1, b: '你回到工位就打开了另一个文档。刚才那场会像没发生过。' },
+      { t: '甚至有点意犹未尽，想再讲两句', w: 2, b: '你回到工位还在想那个问题，甚至想找个人接着聊。' }
+    ]
+  },
+  {
+    n: 6, stage: 'morning', label: '上午', clock: '12:20', trait: 'OPE',
+    art: 'lunch', sfx: '咕——',
+    egg: '楼下那家你其实吃腻了，但你没说过。',
+    narr: '十二点二十。同事在群里问“吃什么”，底下已经刷了十几条。有人提议新开的那家泰餐，还有人发了张排队的照片，队伍从店门口拐了个弯。',
+    q: '你把什么打进了对话框？',
+    opts: [
+      { t: '“新开那家去试试？”', w: 2, b: '你打出这行字的时候已经在想冬阴功的味道了。排队四十分钟，你觉得值。' },
+      { t: '“你们定，我跟”', w: 1, b: '你跟着大部队走，路上听他们争论吃什么，觉得这个过程本身也挺有意思。' },
+      { t: '“楼下那家吧，快”', w: -1, b: '你在楼下那家点了老三样，十二点四十吃完，一点之前回到了工位。' },
+      { t: '“还是老地方吧，我闭着眼都知道点什么，不用想”', w: -2, b: '你说完这句话，心里松了一口气——今天又少做了一个决定。' }
+    ]
+  },
+  {
+    n: 7, stage: 'noon', label: '午后', clock: '15:00', trait: 'AGR',
+    art: 'help', sfx: '那个…',
+    egg: '你其实早就看见她卡在哪儿了，只是没说。',
+    narr: '下午三点，你正在赶自己的活。隔壁工位的同事转过来，声音压得很低：“你现在方便吗？有个表我弄不太明白……”她的屏幕上是一堆密密麻麻的数据，你一眼就看出来她卡在哪儿了。你手上那份东西，今天下班前得交。',
+    q: '你怎么办？',
+    opts: [
+      { t: '站起来走过去，先帮她弄明白，自己晚上加一会儿班', w: 2, b: '你花了二十分钟，她眼睛亮起来的时候你也有点高兴。晚上八点你还在改自己的东西。' },
+      { t: '花五分钟给她指个方向，剩下的让她自己试', w: 1, b: '你指了个方向就回来了。十分钟后她小声说“好了”，你在心里说了句“可以啊”。' },
+      { t: '说“等我五分钟”，然后真的先做完手上这一段', w: -1, b: '你先把自己的东西收了个尾，再过去。她等了五分钟，但你没耽误自己的进度。' },
+      { t: '说“我也不太熟，你问问别人？”——虽然你其实会', w: -2, b: '你说完那句话，心里掠过一点点不舒服，然后你继续敲键盘。' }
+    ]
+  },
+  {
+    n: 8, stage: 'noon', label: '午后', clock: '17:30', trait: 'EXT',
+    art: 'invite', sfx: '嗡——',
+    egg: '那“两个你没见过的”里，有一个后来成了你的好朋友。',
+    narr: '手机震了一下。朋友发来消息：“晚上聚一下？就咱几个，还有两个你可能没见过。”地点在城西，从公司过去要四十分钟。今天你已经开了三个会，走了八千步。',
+    q: '你回什么？',
+    opts: [
+      { t: '“去！几点？”', w: 2, b: '你回消息的速度快得连自己都愣了一下。今天的疲惫好像被这句话冲淡了一半。' },
+      { t: '“去，但我会晚点到”', w: 1, b: '你答应了，给自己留了二十分钟。你在地铁上补了个觉。' },
+      { t: '“今天算了，改天吧”', w: -1, b: '你回完这条消息，心里有一点点失落，更多的是一种说不清的轻松。' },
+      { t: '“你们玩，我先回家躺了”', w: -2, b: '你把手机扣在桌上。回家路上你一个人戴着耳机，觉得今晚挺好。' }
+    ]
+  },
+  {
+    n: 9, stage: 'noon', label: '午后', clock: '18:40', trait: 'OPE',
+    art: 'headphone', sfx: '♪',
+    egg: '往下滑三下这个数字，你其实数过。',
+    narr: '下班路上，你戴上耳机。音乐软件打开，推荐栏第一首是个你没听过的名字，封面是一团看不懂的色块。往下滑三下，才是你听了两年那张专辑。',
+    q: '你点哪一个？',
+    opts: [
+      { t: '那首没听过的，反正耳朵又不花钱', w: 2, b: '前奏有点怪。你听完了，又把这个人剩下的歌翻了一遍。' },
+      { t: '先试听十五秒，不对味再切回去', w: 1, b: '十五秒之后你没切。你想了想，把它加进了“以后再听”里。' },
+      { t: '往下滑，点开那张熟的', w: -1, b: '熟悉的第一句响起来，你肩膀松了一点。' },
+      { t: '直接开“最近播放”，今天不想再做一个选择', w: -2, b: '你从今天早上到现在做了太多决定，此刻你只想让音乐自己走。' }
+    ]
+  },
+  {
+    n: 10, stage: 'dusk', label: '黄昏', clock: '19:30', trait: 'CON',
+    art: 'market', sfx: '哐当',
+    egg: '买二送一那盒，你其实算过日期。',
+    narr: '超市里灯很亮，广播在放一首很旧的歌。你推着车走到酸奶这一排，看见两种：一种买二送一，明天到期；一种贵六块，下周三到期。',
+    q: '你的手伸向——',
+    opts: [
+      { t: '贵的那盒。算过了，我喝得完，不会浪费', w: 2, b: '你把它放进车里。你确实是算过的，不是随口说的。' },
+      { t: '买二送一。今天喝一盒，明天喝两盒，刚刚好', w: 1, b: '你已经在脑子里安排好了明天早上那一盒。这种安排让你踏实。' },
+      { t: '拿起来看了半天，又放下，最后两种都没买', w: -1, b: '你推着车走了，走到零食区又回头看了一眼那排酸奶。' },
+      { t: '随便拿一盒。反正喝不完就放着，放着放着就过期了', w: -2, b: '你随手拿了一盒，回家放进冰箱，然后就忘了它——直到它过期。' }
+    ]
+  },
+  {
+    n: 11, stage: 'dusk', label: '黄昏', clock: '21:30', trait: 'STA',
+    art: 'sofa', sfx: '呼——',
+    egg: '冰箱每隔一会儿就响一下，你其实听得很清楚。',
+    narr: '你终于到家了。鞋一脱，包往地上一放，人陷进沙发。房间里很安静，只有冰箱在响。今天有一件事你没做好，很小的一件事，小到别人根本不会记得。',
+    q: '接下来的十分钟，你在想什么？',
+    opts: [
+      { t: '那件事为什么会那样，如果当时换个说法是不是就不一样', w: -2, b: '你在沙发上把那句话重新说了三遍。每一遍都比上一遍更好，可惜用不上了。' },
+      { t: '有点堵，但说不上来堵在哪', w: -1, b: '你躺着没动，觉得今天好像少了点什么，又说不清是什么。' },
+      { t: '想不起来了，现在只想找点吃的', w: 1, b: '你翻出冰箱里的东西，煮了碗面。吃完你就困了。' },
+      { t: '已经不重要了，今天很累，先洗个澡', w: 2, b: '你去洗了个澡，出来的时候已经想不起那件事的细节了。' }
+    ]
+  },
+  {
+    n: 12, stage: 'dusk', label: '黄昏', clock: '23:10', trait: 'AGR',
+    art: 'voice', sfx: '（38秒）',
+    egg: '这个月第四次了，你每次都骂完再陪她。',
+    narr: '十一点十分，朋友发来一大段语音，转文字之后有三屏。她讲的是同一个人的同一件事，今天已经是这个月第四次了。你其实知道她要什么——她要的不是答案，是有人站在她这边。',
+    q: '你怎么回她？',
+    opts: [
+      { t: '先进去骂那个人两句，再陪她骂到十二点', w: 2, b: '你骂得比她还狠，她终于笑了。挂了之后你觉得有点累，但值得。' },
+      { t: '认真听完，问她“你打算怎么办”', w: 1, b: '你把话听完了，问了这一句。她沉默了一会儿，说“我不知道”。' },
+      { t: '说“我们上次聊过这个”，然后给她一个方案', w: -1, b: '你给了方案。她没有回。你看着那个“已读”，有点后悔。' },
+      { t: '“这都第几次了，你到底想怎样”', w: -2, b: '消息发出去你就后悔了。她没再回，直到三天后。' }
+    ]
+  },
+  {
+    n: 13, stage: 'night', label: '深夜', clock: '23:50', trait: 'STA',
+    art: 'memory', sfx: '……',
+    egg: '那条评论你其实点开看过三次，只是没回。',
+    narr: '刷着刷着，划到一条三年前的动态。那时候你在另一个城市，住在一间朝北的房子，照片里桌上有半杯凉掉的咖啡。下面有个很久没联系的人的评论，你甚至想不起当时为什么没回。',
+    q: '你把手机放下之后——',
+    opts: [
+      { t: '笑了笑，继续往下刷', w: 2, b: '你想了句“那时候真年轻”，然后继续刷。三分钟后你就忘了。' },
+      { t: '看了一会儿，退出去，顺手清了一下相册', w: 1, b: '你删掉了十几张糊掉的照片。删完心里干净了一点。' },
+      { t: '心里空了一下，说不上为什么', w: -1, b: '你放下手机，房间里很安静。那种空落落的感觉持续了大概十分钟。' },
+      { t: '一直想到一点半，想到如果当初做了别的选择', w: -2, b: '你在黑暗里把那些“如果”过了一遍又一遍，直到眼睛发酸。' }
+    ]
+  },
+  {
+    n: 14, stage: 'night', label: '深夜', clock: '00:20', trait: 'CON',
+    art: 'snooze', sfx: '滑动',
+    egg: '明天早上那个按“再睡五分钟”的人，也是你。',
+    narr: '手机屏幕的光照着天花板。你在设闹钟。明天是周三，早上八点要开周会，你上周迟到过一次——那次没人说什么，但你记得。',
+    q: '你的手指在时间轮盘上滑到——',
+    opts: [
+      { t: '七点整，还要留出吃早饭的时间', w: 2, b: '你设好闹钟，顺手把明天的衣服放到了椅子上。' },
+      { t: '七点半，够洗脸刷牙就行', w: 1, b: '七点半，你觉得够了。你在心里过了一遍明早的流程，确认来得及。' },
+      { t: '七点五十，从床上弹起来那种', w: -1, b: '你知道七点五十意味着什么，但你想，明天应该能起来。' },
+      { t: '先不设，明早自然醒，来不及就来不及', w: -2, b: '你把手机往枕头边一放。那一刻你确实感到了一种自由。' }
+    ]
+  },
+  {
+    n: 15, stage: 'night', label: '深夜', clock: '00:40', trait: 'AGR',
+    art: 'goodnight', sfx: '叮',
+    egg: '那句“你今天过得怎么样”，你盯着看了很久。',
+    narr: '手机忽然亮了。一个平时不太说话的人发来一句：“你今天过得怎么样？”就这一句，没有下文。房间很黑，屏幕很亮，你的拇指停在输入框上。',
+    q: '你打了什么？',
+    opts: [
+      { t: '认真回了一段，顺便也问她今天怎么样', w: 2, b: '你打了六行，又删掉两行，最后发出去四行。然后你等了一会儿，她回了。' },
+      { t: '“还行，你呢”', w: 1, b: '四个字。你发出去之后又觉得好像少了点什么，但你没再补。' },
+      { t: '“挺好的”，然后放下手机', w: -1, b: '你打出三个字就锁了屏。黑暗里你睁着眼睛躺了一会儿。' },
+      { t: '心里想的是“说了你也帮不上忙”，最后回了个“嗯”', w: -2, b: '那个“嗯”发出去，对话框安静了。你把手机翻了过去。' }
+    ]
+  }
+];
+
+/* 16 型报告。代码顺序 = [E/I][N/S][F/T][J/P] */
+const TYPES = {
+  INTJ: {
+    name: '嘴硬心软的独居规划局长',
+    main: '你脑子里长期运行着一张三年计划表，而且它比大多数人那份都详细。你不喜欢开会，因为很多会本来可以写成一封邮件；你也不喜欢寒暄，因为寒暄里没有信息量。你会在别人还在讨论“要不要做”的时候，已经把“怎么做”想完了。问题在于，你太习惯一个人把事情推演到底，于是很少有人知道你在想什么——包括那些其实很在乎你的人。你不是冷，你只是把温度藏在了“我帮你把方案改好了”这种地方。',
+    good: ['想得远，别人只看眼前时你已经看到了第三步', '判断独立，不因为大家都这么说就跟着走', '执行的时候不需要掌声，也不需要有人陪着'],
+    bad: ['容易把“我能扛”当成“我应该扛”，然后在某个深夜突然觉得自己是座孤岛', '对情绪的表达有近乎笨拙的节约，让在乎你的人常常只能靠猜'],
+    friend: '他不常主动找人，但你真出事了，他一定是第一个到的。别用“你怎么都不说话”开场，他会立刻关上门。',
+    love: '他表达爱的方式是解决问题：你说冷，他去关窗，而不是说“抱一下”。读懂这一点你会过得很舒服，读不懂你会觉得他不爱你。',
+    quote: '我不是要赢，我只是不喜欢一件事情有一半没想清楚。'
+  },
+  INTP: {
+    name: '脑内开着十七个标签页的人',
+    main: '你的大脑是一台从不关机的浏览器，永远同时开着十七个标签页：一个在想宇宙的尽头，一个在查“为什么微波炉加热不均匀”，还有一个停在三年前某句没说完的话上。你对“为什么”的兴趣远远大于“怎么办”，所以经常在别人等结论的时候，兴致勃勃地拆解问题本身。你不是拖延，你是觉得把一个东西想明白，比把它做完更有意思。也正因为这样，你常常在深夜忽然想通一件跟今天完全无关的事。',
+    good: ['概念能力强，能把一团乱麻拆成几条清楚的线', '不迷信权威，只认道理，谁说的都一样', '对自己的无知很坦然，不懂就是不懂'],
+    bad: ['想得太多做得太少，抽屉里躺着好几个“想清楚了但没开始”的项目', '对具体生活的琐事——缴费、回消息、体检——有一种稳定的失能'],
+    friend: '跟他聊天永远不无聊，但你约他三次他能到一次，而且不一定会提前说。',
+    love: '他不太会说漂亮话，但会认真听你讲完那些连你自己都觉得啰嗦的烦恼，还会记住里面的细节。',
+    quote: '我不是不行动，我是在等我想明白——虽然可能要想很久。'
+  },
+  ENTJ: {
+    name: '把生活过成项目进度表的人',
+    main: '你身上有一种天然的“那我来吧”。小组作业里你不知不觉就成了组长，朋友聚会里最后定时间地点的也是你。你的效率高到让身边的人有点压力——你不是要压谁，你只是受不了事情停在原地。你喜欢把目标拆成阶段，一阶段一阶段推过去。唯一的麻烦是，你衡量事情的标准是“有没有推进”，而人生里有些事，比如一个人需要慢慢难过一会儿，是不推进的。',
+    good: ['决断快，能在信息不完整的时候做出一个能执行的选择', '天生的组织者，能把一群散沙拧成一股绳', '抗压能力离谱，别人慌的时候你不慌'],
+    bad: ['容易把关心变成指导，而对方那一刻需要的只是被听见', '休息这件事你总是排在所有事情的最后，然后一次性还账'],
+    friend: '他是那种会帮你把事情办了的朋友。直接说需求，别说“随便”，他真的会替你决定。',
+    love: '他会认真规划你们的未来，但有时候需要有人提醒他：今天不用规划，今天只要待在一起。',
+    quote: '我不是要控制一切，我只是受不了事情停在这里。'
+  },
+  ENTP: {
+    name: '什么事都能聊，但很少聊完',
+    main: '你有一种天赋：任何话题都能被你接住，并且抛出新的一层。你在饭桌上能同时逗笑三个人，也能在一句话里连开三个脑洞。你最喜欢的状态不是“我赢了”，而是“我刚刚把它说得很有意思”。所以你的问题从来不是没想法，而是想法太多，多到昨天那个你已经不太想接今天这个你的电话。你答应过的事是真的想做到，只是后来又出现了更让你兴奋的事。',
+    good: ['反应快，脑子转得比嘴还快，冷场这件事很难发生在你身上', '天生的破局者，不认“一直如此”这一套', '把人逗笑这件事上，你几乎是免费的'],
+    bad: ['起头比收尾多，容易留下半成品的项目和半热情的关系', '辩论的时候容易忘记对方不是在跟你玩，而是真的在意'],
+    friend: '永远不会冷场，但你得接受他临时改主意，而且改得很自然。',
+    love: '他会把你逗得笑出眼泪，也会在吵架时忍不住“就事论事”——记得提醒他，现在不是辩论赛。',
+    quote: '我不是三分钟热度，我只是三分钟真的很多。'
+  },
+  INFJ: {
+    name: '看起来很懂你，其实很怕被看穿',
+    main: '你有一种很少有人发现的能力：你能在一场对话里，同时听见对方说了什么、没说什么，以及为什么没说。所以很多人愿意跟你讲心事，甚至讲那些他们自己都没整理清楚的事。你习惯先照顾别人的感受，再处理自己的，以至于你的自我常常排在很后面。你很懂人性，但这份懂是有代价的——看得越清楚，越难假装没看见。你需要的不是更多人来懂你，而是一个你可以不用懂任何人、安安静静待着的地方。',
+    good: ['洞察力强，能听见话底下的东西', '对在乎的人有近乎固执的忠诚，认定了就一直在', '表达安静但有重量，说一句算一句'],
+    bad: ['过度承担别人的情绪，别人难过的时候你比他更累', '不习惯直接说“我需要”，总是等别人自己发现'],
+    friend: '她会记得你上次说过的每一个细节，也会在你开口之前就发现你不对劲。',
+    love: '她爱得很深但说得很轻。如果你不主动问，她能忍很久很久。',
+    quote: '我不是想太多，我只是听得太清楚。'
+  },
+  INFP: {
+    name: '心里有一整座剧场，观众只有自己',
+    main: '你的内心世界比外部生活热闹得多。别人看到的可能是一个安静、好说话、有点慢热的人，但在你脑子里，一场对话已经被你重演了七遍，每一遍台词都不一样。你有一整套自己的对错标准，平时不拿出来，但一旦被碰到，你会比谁都固执。你容易被一句话、一首歌、一段旧影像击中，然后在没人知道的地方难过或感动了很久。你不是脆弱，你只是对这个世界一直保持着很高的灵敏度。',
+    good: ['感受力强，能捕捉到别人忽略的美和难过', '价值感清晰，不随大流，也不容易被人说服', '共情的时候是真的在替你疼，不是礼貌性地点点头'],
+    bad: ['容易把“算了吧”当成解决办法，把不满咽下去，然后独自消化一整天', '理想和现实之间的落差常常让你感到疲惫，而这份疲惫很难跟人解释'],
+    friend: '她是最好的倾听者。但你问她“你还好吗”的时候，请真的等她把话说完。',
+    love: '她会把你随口说过的话记很久，也会把你随口的敷衍想很久。',
+    quote: '我没事，只是心里那场戏还没散场。'
+  },
+  ENFJ: {
+    name: '人形充电宝，但自己经常没电',
+    main: '你走进一个房间，会不自觉地开始照顾气氛：谁坐在角落不太说话，谁的杯子空了，谁刚才那句话其实有点难过——你都看得见。你有让人放松的天赋，很多人愿意跟你讲那些不会跟别人讲的事。你擅长鼓励别人，说的话真的能让人重新有力气。但你自己累的时候，往往找不到人说，因为你太习惯当那个“没关系，我在”的人了。你需要记得一件事：你也可以是那个被照顾的人。',
+    good: ['天生的人际黏合剂，能让一桌陌生人变成朋友', '鼓励人的能力是真的，你说的话别人能记很多年', '责任感强，答应过的事一定会做到'],
+    bad: ['太在意别人的评价，一句冷淡的回复能让你反思一整晚', '边界感薄弱，容易把别人的情绪当成自己的任务'],
+    friend: '他记得你的生日、你的口味，还有你上次随口说的那件烦心事。',
+    love: '他会把关系经营得很好。但请记得问他今天累不累——他很少会主动说。',
+    quote: '你们开心就好——我说这句话的时候是真心的，只是有点想哭。'
+  },
+  ENFP: {
+    name: '三分钟热度，但每次都热得认真',
+    main: '你对世界的兴趣是满的。什么东西都想试试，什么人都想认识一下，什么念头刚冒出来就想去碰一碰。你在人群里是有感染力的那种人，因为你真的会为一件小事兴奋，而别人会被你的兴奋传染。你的问题是保质期——热情来的时候很猛，走得也很干脆，留下一堆开了头的视频、看了十页的书和答应了但没做完的事。但有一点要说清楚：你放弃的那些，不是因为你敷衍，是因为你是真的用力热过。',
+    good: ['好奇心旺盛，永远有新东西可以聊', '情绪感染力强，能带动一整个房间的气氛', '对人有天生的善意，而且不图回报'],
+    bad: ['选择困难，因为什么都想要', '收尾困难，热情退潮之后剩下的那部分对你来说格外难熬'],
+    friend: '他会突然给你发一条半夜的语音，内容关于人生，或者关于一只猫。',
+    love: '他爱得热烈但需要空间。把他关起来你会失去他，给他自由他反而会回来。',
+    quote: '我不是不专一，我是对很多事情都很专一，只是时间不太够。'
+  },
+  ISTJ: {
+    name: '稳稳地站在那里，像一块不会说话的石头',
+    main: '你不太说漂亮话，但你答应的事都会做到。你的生活是靠制度和习惯运转的：东西有固定的位置，事情有固定的顺序，别人临时改计划会让你心里咯噔一下，虽然你通常不会说出来。你的可靠不是表演出来的，是你觉得本来就该这样。所以很多人要到很后来才发现，那个一直在场、从来没有掉过链子的人，是你。',
+    good: ['可靠到可以托付事情，不用盯、不用催', '细致，别人的疏漏你一眼就能看到', '情绪稳定，风声大的时候你不乱'],
+    bad: ['不擅长表达感情，明明在乎却说得像在通知', '对“没按流程来”的事有本能的不适，容易错过一些其实不错的意外'],
+    friend: '他不会说想你，但会记得你说过要修的那个东西，并且真的带着工具来了。',
+    love: '他的爱藏在交水电费、记着体检、提前十分钟到这些事里。',
+    quote: '我说会做到，就是会做到——这句话我已经说了很多年了。'
+  },
+  ISFJ: {
+    name: '记得所有人喜欢什么，除了自己',
+    main: '你是那种会记得同事不吃香菜、朋友家的猫叫什么、谁上次随口说过想吃什么的人。你在关系里做的事情大多不会被看见，因为你的做法是“让一切变得刚刚好”，而刚刚好是不容易被注意到的。你不太会拒绝别人，也不太会为自己争，被夸的时候甚至会有点不好意思。你的问题从来不是不够好，而是太好，好到忘了自己也有想吃的、想要的、想拒绝的。',
+    good: ['极致的细心，你的体贴落在具体的地方，不是嘴上说说', '忠诚，认定了就一直在，不因为对方暂时没回应就走开', '让人安心的能力，跟你待在一起很踏实'],
+    bad: ['不懂拒绝，容易被当成“反正他不会有意见”', '习惯委屈自己，然后一个人慢慢消化，消化不掉就存着'],
+    friend: '她会默默记得你所有的小事。但你需要时不时问她一句：“你想吃什么？”',
+    love: '她把照顾你当成习惯。记得也给她同样的照顾，她很少主动要。',
+    quote: '都行，你们定——其实我有一个很想要的，只是没敢说。'
+  },
+  ESTJ: {
+    name: '把混乱收拾干净的那种人',
+    main: '事情乱成一团的时候，你是第一个动手的人。你相信先做起来、边做边调整，也相信规则存在的意义。你说话直接，效率优先，不喜欢“我觉得可能大概”。你的执行力强到有时候会让别人觉得被推着走——但说实话，事情最后确实做完了。你的难点在于：人不是项目，不能“推进”。有些时候你需要放慢一点，等一个人把话讲完，而不是直接给他解决方案。',
+    good: ['组织能力突出，混乱到你手上会变有条理', '说到做到，责任边界清楚，不含糊', '不怕冲突，该说的话你会说，不憋着'],
+    bad: ['表达直白，容易让别人觉得在被批评，即使你只是陈述事实', '对“慢”缺乏耐心，容易错过对方真正想说的那一句'],
+    friend: '他靠得住。但你别指望他懂你的暗示，请直接说。',
+    love: '他会把生活安排得妥妥当当。需要有人提醒他偶尔也放松一下，他自己想不起来。',
+    quote: '我不是要管你，我只是看见这件事还没做完就很难受。'
+  },
+  ESFJ: {
+    name: '全场气氛负责人，散场后最累的那个',
+    main: '你在人群里做的事情很多，而且大多是别人注意不到的：调和两句快要冷下来的对话，照顾一下刚落座的人，记住谁的杯子空了、谁刚才被冷落了。你希望每个人在场里都感觉舒服，因此常常在自己已经很累的时候，还在问别人“够不够吃”。你在关系里付出的方式是具体的：带东西、组织、记住细节。你也需要被回应——一条不回的消息，一句敷衍的“随便”，你会记在心里。',
+    good: ['天生的照顾者，能让一个集体变得温暖', '人情世故通透，知道什么时候该说什么话', '热心，愿意为别人真的跑一趟'],
+    bad: ['太在乎别人怎么看，一句冷淡能影响你一整天', '容易在关系里用力过猛，付出得不到同等回应时会很委屈'],
+    friend: '他会记得所有人的生日，也最希望有人记得他的。',
+    love: '他的爱很具体：是他买的菜、他洗的碗、他记住的所有小习惯。',
+    quote: '你说随便的时候，我其实有一点失落。'
+  },
+  ISTP: {
+    name: '话不多，但手很稳',
+    main: '你不喜欢解释，更喜欢直接动手。别人还在讨论方案，你已经把东西拆开看过了。你的世界里“能用”比“好看”重要，“有效”比“正确”重要。你话少，但不是冷漠，你只是觉得大部分话没必要说。你对情绪的处理方式是“先放一放，出去走一圈就没事了”，所以当身边的人需要倾诉时，你会本能地想给方案——因为在你这里，问题解决了，情绪就跟着解决了。',
+    good: ['动手能力强，遇到实际问题时你是全场最有用的那个人', '冷静，紧急情况下你不慌，甚至比平时更清楚', '不装，是什么样就是什么样，久了别人会很信任你'],
+    bad: ['情绪表达过于简洁，亲近的人常常只能靠猜', '不喜欢被安排，别人眼里的“关心”到你这儿会变成“压力”'],
+    friend: '他不常联系，但你需要干活的时候喊他一声就够了。',
+    love: '他表达爱的方式是帮你把坏掉的东西修好，而不是说情话。',
+    quote: '别想那么多，先动手试试。'
+  },
+  ISFP: {
+    name: '不爱说话，但审美很吵',
+    main: '你不太发表意见，但你心里有一套非常明确的偏好：什么好看、什么好听、什么让人舒服，你几乎立刻就知道了。你的生活常常被一些很小的细节决定：一盏灯的色温、一条街的走向、一首歌的前奏。你讨厌被安排，讨厌被催促，也讨厌有人替你决定什么对你最好。你看起来温和好说话，其实相当固执——只是你不太会为了自己争，所以选择沉默。',
+    good: ['审美敏锐，对氛围和细节有天生的判断力', '温和不伤人，让人在你面前很放松', '忠于自己的感受，不轻易被外界的标准绑架'],
+    bad: ['不表达需求，委屈了多半自己咽下去', '对冲突有很强的回避倾向，导致一些关系长期失衡而你不知道怎么开口'],
+    friend: '她不太主动，但跟你在一起的时候是真的放松，这很难得。',
+    love: '她不说“我想要”，但会因为你记得她喜欢什么而开心一整天。',
+    quote: '我没什么意见——好吧，有，但是不说了。'
+  },
+  ESTP: {
+    name: '先做了再说，反正来不及后悔',
+    main: '你是那种会当场把想法变成行动的人。别人还在权衡利弊，你已经上车了。你反应快，敢冒险，对世界有很强的行动欲。你的生活里有不少“事后想想有点惊险”的时刻，但你不太后悔，因为对你来说，错过的遗憾比做错的遗憾更难受。你的问题在于节奏：不是每个人都有你这样的速度，有些人需要一点时间才能跟上你。',
+    good: ['行动力惊人，机会来了你真的能抓住', '临场反应快，突发状况里你比谁都稳', '生命力旺盛，跟你在一起很少无聊'],
+    bad: ['冲动的时候容易忽略细节和后果，回头再补成本更高', '耐心不足，对需要长期积累的事容易中途丢掉'],
+    friend: '有他在就不会冷场，但你得跟得上他的节奏，掉队了他不一定发现。',
+    love: '他会给你很多惊喜，也会偶尔让你担心——他不太会提前打招呼。',
+    quote: '想了也没用，先试试再说。'
+  },
+  ESFP: {
+    name: '走到哪儿，哪儿就热起来',
+    main: '你身上有一种很难解释的吸引力：你在，气氛就不会太差。你活在当下，对眼前的一切感受得又快又真——好吃就真的开心，好玩就真的投入，难过也是真的难过，但不会难过太久，因为外面还有别的事在等你。你不喜欢计划，不喜欢沉重的分析，也不喜欢有人在你开心的时候提醒你“以后怎么办”。你的生活态度其实是很多人偷偷羡慕的那种：认真地把今天过好。',
+    good: ['感染力强，能让人放下防备，很快就熟起来', '对当下的感受极其敏锐，生活质感比大多数人高', '真诚热情，让人愿意靠近，也愿意再来'],
+    bad: ['对长期的、枯燥的事缺乏耐心，重要但不紧急的事常常一拖再拖', '情绪来得快，也容易被一句话影响，当场的反应未必是你真正的想法'],
+    friend: '他会把你从房间里拉出来，哪怕你原本只想躺着。',
+    love: '他给的爱很直接，也很需要回应。别让他对着空气热情。',
+    quote: '明天的事明天说，今天先开心了再说。'
+  }
+};
+
+/* 隐藏称号：5 个特质 × 2 个方向 = 10 个称号，每个含“坚定 / 摇摆”两种口吻 */
+const TITLES = {
+  'EXT-hi': { name: '人形充电宝', firm: '你今晚大概会把这场聚会的每一个细节都讲给另一个人听。', loose: '你想去，又想回家，两件事同时为真。' },
+  'EXT-lo': { name: '安静的观察席', firm: '一整晚你说了不到十句话，但你什么都看见了。', loose: '你不是不想说话，你只是想先看看这里安不安全。' },
+  'OPE-hi': { name: '永远在试新东西', firm: '你今天的菜单上有两种你没吃过的东西。', loose: '今天你想换个活法，明天你又想念老样子。' },
+  'OPE-lo': { name: '老地方的常客', firm: '你知道自己在哪家店坐哪个位置最舒服。', loose: '你嘴上说随便，其实心里有一家已经选好了。' },
+  'CON-hi': { name: '心里有张清单', firm: '你今天的待办事项，划掉了七条，又新加了六条。', loose: '计划做得很漂亮，执行看心情，你自己也知道。' },
+  'CON-lo': { name: '临时起意冠军', firm: '你不喜欢计划这件事，但你意外地很有自己的一套节奏。', loose: '明天再说——你已经对自己说过很多次这句话了。' },
+  'AGR-hi': { name: '人形避风港', firm: '今天有两个人把心事倒给了你，你都接住了。', loose: '你对谁都挺好的，除了对自己。' },
+  'AGR-lo': { name: '直球选手', firm: '你今天说的那句实话，可能需要三天才被人消化完。', loose: '你嘴上不饶人，心里其实一直在替对方算。' },
+  'STA-hi': { name: '心里有减震器', firm: '今天那件糟心事，你晃了一下就回正了。', loose: '你看起来没事，其实在心里排演了好几遍。' },
+  'STA-lo': { name: '高灵敏度感应器', firm: '你敏锐地察觉到了今天每一个细微的变化，包括不该察觉的那些。', loose: '一句话能想一宿，说的就是你今晚。' }
+};
+
+const STAGE_LABEL = { dawn: '破晓', morning: '上午', noon: '午后', dusk: '黄昏', night: '深夜' };
+/* ============================================================
+   二维码生成器：纯 JS，字节模式，纠错等级 M，版本 1–10
+   无外部接口、无网络请求
+   ============================================================ */
+const QR = (function () {
+  /* --- GF(256)，本原多项式 0x11D --- */
+  const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+  (function () {
+    let x = 1;
+    for (let i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11D; }
+    for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  })();
+  const gmul = (a, b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+
+  /* --- 版本表（纠错等级 M）：ec = 每块纠错码字，g = [块数, 每块数据码字] --- */
+  const VER = {
+    1: { ec: 10, g: [[1, 16]] },
+    2: { ec: 16, g: [[1, 28]] },
+    3: { ec: 26, g: [[1, 44]] },
+    4: { ec: 18, g: [[2, 32]] },
+    5: { ec: 24, g: [[2, 43]] },
+    6: { ec: 16, g: [[4, 27]] },
+    7: { ec: 18, g: [[4, 31]] },
+    8: { ec: 22, g: [[2, 38], [2, 39]] },
+    9: { ec: 22, g: [[3, 36], [2, 37]] },
+    10: { ec: 26, g: [[4, 43], [1, 44]] }
+  };
+  const ALIGN = { 1: [], 2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30], 6: [6, 34], 7: [6, 22, 38], 8: [6, 24, 42], 9: [6, 26, 46], 10: [6, 28, 50] };
+
+  const dataCodewords = v => VER[v].g.reduce((s, b) => s + b[0] * b[1], 0);
+  const capacityBytes = v => Math.floor((dataCodewords(v) * 8 - (v < 10 ? 12 : 20)) / 8);
+
+  function utf8(str) {
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(str);
+    const o = [];
+    for (let i = 0; i < str.length; i++) {
+      let c = str.charCodeAt(i);
+      if (c < 0x80) o.push(c);
+      else if (c < 0x800) o.push(0xC0 | (c >> 6), 0x80 | (c & 63));
+      else if (c >= 0xD800 && c < 0xDC00) {
+        const c2 = str.charCodeAt(++i), cp = 0x10000 + ((c - 0xD800) << 10) + (c2 - 0xDC00);
+        o.push(0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+      } else o.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    }
+    return new Uint8Array(o);
+  }
+
+  /* --- Reed–Solomon --- */
+  function genPoly(n) {
+    let p = [1];
+    for (let i = 0; i < n; i++) {
+      const q = p.concat([0]);
+      for (let j = 0; j < p.length; j++) q[j + 1] ^= gmul(p[j], EXP[i]);
+      p = q;
+    }
+    return p;
+  }
+  function rsEncode(data, ecLen) {
+    const gen = genPoly(ecLen), res = new Uint8Array(ecLen);
+    for (let i = 0; i < data.length; i++) {
+      const factor = data[i] ^ res[0];
+      for (let j = 0; j < ecLen - 1; j++) res[j] = res[j + 1];
+      res[ecLen - 1] = 0;
+      if (factor !== 0) for (let j = 0; j < ecLen; j++) res[j] ^= gmul(gen[j + 1], factor);
+    }
+    return res;
+  }
+
+  /* --- 数据编码（字节模式） --- */
+  function encodeData(bytes, v) {
+    const total = dataCodewords(v), cap = total * 8, bits = [];
+    const push = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+    push(4, 4);
+    push(bytes.length, v < 10 ? 8 : 16);
+    for (let i = 0; i < bytes.length; i++) push(bytes[i], 8);
+    for (let i = 0, t = Math.min(4, cap - bits.length); i < t; i++) bits.push(0);
+    while (bits.length % 8 !== 0) bits.push(0);
+    const pad = [0xEC, 0x11];
+    for (let i = 0; bits.length < cap; i++) push(pad[i % 2], 8);
+    const out = new Uint8Array(total);
+    for (let i = 0; i < bits.length; i += 8) {
+      let val = 0;
+      for (let j = 0; j < 8; j++) val = (val << 1) | bits[i + j];
+      out[i / 8] = val;
+    }
+    return out;
+  }
+
+  /* --- 分块 + 纠错 + 交织 --- */
+  function toCodewords(bytes, v) {
+    const info = VER[v], data = encodeData(bytes, v);
+    const blocks = [], ecBlocks = [];
+    let off = 0;
+    for (const [count, len] of info.g) {
+      for (let i = 0; i < count; i++) {
+        const blk = data.slice(off, off + len);
+        off += len;
+        blocks.push(blk);
+        ecBlocks.push(rsEncode(blk, info.ec));
+      }
+    }
+    const out = [];
+    const maxLen = Math.max.apply(null, blocks.map(b => b.length));
+    for (let i = 0; i < maxLen; i++) for (const b of blocks) if (i < b.length) out.push(b[i]);
+    for (let i = 0; i < info.ec; i++) for (const b of ecBlocks) out.push(b[i]);
+    return out;
+  }
+
+  /* --- BCH --- */
+  const bchDigit = d => { let n = 0; while (d !== 0) { n++; d >>>= 1; } return n; };
+  function bch15(data) {
+    let d = data << 10;
+    while (bchDigit(d) - bchDigit(0x537) >= 0) d ^= (0x537 << (bchDigit(d) - bchDigit(0x537)));
+    return ((data << 10) | d) ^ 0x5412;
+  }
+  function bch18(data) {
+    let d = data << 12;
+    while (bchDigit(d) - bchDigit(0x1F25) >= 0) d ^= (0x1F25 << (bchDigit(d) - bchDigit(0x1F25)));
+    return (data << 12) | d;
+  }
+  const maskFn = (p, i, j) => {
+    switch (p) {
+      case 0: return (i + j) % 2 === 0;
+      case 1: return i % 2 === 0;
+      case 2: return j % 3 === 0;
+      case 3: return (i + j) % 3 === 0;
+      case 4: return (Math.floor(i / 2) + Math.floor(j / 3)) % 2 === 0;
+      case 5: return (i * j) % 2 + (i * j) % 3 === 0;
+      case 6: return ((i * j) % 2 + (i * j) % 3) % 2 === 0;
+      default: return ((i * j) % 3 + (i + j) % 2) % 2 === 0;
+    }
+  };
+
+  /* --- 生成矩阵 --- */
+  function build(v, codewords, mask) {
+    const size = v * 4 + 17;
+    const m = [];
+    for (let i = 0; i < size; i++) m.push(new Array(size).fill(null));
+
+    const placeFinder = (r0, c0) => {
+      for (let i = -1; i <= 7; i++) for (let j = -1; j <= 7; j++) {
+        const r = r0 + i, c = c0 + j;
+        if (r < 0 || r >= size || c < 0 || c >= size) continue;
+        const on = i >= 0 && i <= 6 && j >= 0 && j <= 6 &&
+          (i === 0 || i === 6 || j === 0 || j === 6 || (i >= 2 && i <= 4 && j >= 2 && j <= 4));
+        m[r][c] = on ? 1 : 0;
+      }
+    };
+    placeFinder(0, 0); placeFinder(0, size - 7); placeFinder(size - 7, 0);
+
+    /* 定位图形必须排在时序图形之前：时序图形会穿过定位图形，
+       若顺序颠倒，"已占用则跳过"的判断会把压在时序线上的定位图形整块丢掉 */
+    const al = ALIGN[v];
+    for (const r0 of al) for (const c0 of al) {
+      if (m[r0][c0] !== null) continue;
+      for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) {
+        m[r0 + i][c0 + j] = Math.max(Math.abs(i), Math.abs(j)) === 1 ? 0 : 1;
+      }
+    }
+
+    for (let i = 8; i < size - 8; i++) {
+      const bit = i % 2 === 0 ? 1 : 0;
+      if (m[6][i] === null) m[6][i] = bit;
+      if (m[i][6] === null) m[i][6] = bit;
+    }
+
+    m[size - 8][8] = 1;
+
+    const format = bch15((0 << 3) | mask); /* 纠错等级 M = 0b00 */
+    for (let i = 0; i < 15; i++) {
+      const bit = (format >> i) & 1;
+      if (i < 6) m[i][8] = bit;
+      else if (i < 8) m[i + 1][8] = bit;
+      else m[size - 15 + i][8] = bit;
+    }
+    for (let i = 0; i < 15; i++) {
+      const bit = (format >> i) & 1;
+      if (i < 8) m[8][size - i - 1] = bit;
+      else if (i < 9) m[8][15 - i] = bit;
+      else m[8][14 - i] = bit;
+    }
+
+    if (v >= 7) {
+      const vbits = bch18(v);
+      for (let i = 0; i < 18; i++) {
+        const bit = (vbits >> i) & 1;
+        m[Math.floor(i / 3)][i % 3 + size - 11] = bit;
+        m[i % 3 + size - 11][Math.floor(i / 3)] = bit;
+      }
+    }
+
+    /* 数据填充：右下角起，两列一组，蛇形向上/向下 */
+    let inc = -1, row = size - 1, bitIdx = 7, byteIdx = 0;
+    for (let col = size - 1; col > 0; col -= 2) {
+      if (col === 6) col--;
+      for (; ;) {
+        for (let c = 0; c < 2; c++) {
+          const cc = col - c;
+          if (m[row][cc] === null) {
+            let dark = false;
+            if (byteIdx < codewords.length) dark = ((codewords[byteIdx] >>> bitIdx) & 1) === 1;
+            if (maskFn(mask, row, cc)) dark = !dark;
+            m[row][cc] = dark ? 1 : 0;
+            bitIdx--;
+            if (bitIdx === -1) { byteIdx++; bitIdx = 7; }
+          }
+        }
+        row += inc;
+        if (row < 0 || row >= size) { row -= inc; inc = -inc; break; }
+      }
+    }
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (m[r][c] === null) m[r][c] = 0;
+    return m;
+  }
+
+  /* --- 掩码惩罚（ISO/IEC 18004 四条规则） --- */
+  function penalty(m) {
+    const size = m.length;
+    let p = 0;
+    const runScore = len => len >= 5 ? 3 + (len - 5) : 0;
+    for (let r = 0; r < size; r++) {
+      let run = 1;
+      for (let c = 1; c <= size; c++) {
+        if (c < size && m[r][c] === m[r][c - 1]) run++;
+        else { p += runScore(run); run = 1; }
+      }
+    }
+    for (let c = 0; c < size; c++) {
+      let run = 1;
+      for (let r = 1; r <= size; r++) {
+        if (r < size && m[r][c] === m[r - 1][c]) run++;
+        else { p += runScore(run); run = 1; }
+      }
+    }
+    for (let r = 0; r < size - 1; r++) for (let c = 0; c < size - 1; c++) {
+      const v = m[r][c];
+      if (v === m[r][c + 1] && v === m[r + 1][c] && v === m[r + 1][c + 1]) p += 3;
+    }
+    const pat = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0], pat2 = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1];
+    const matchAt = (arr, i, j, horiz, rev) => {
+      for (let k = 0; k < 11; k++) {
+        const v = rev ? arr[10 - k] : arr[k];
+        const got = horiz ? m[i][j + k] : m[i + k][j];
+        if (got !== v) return false;
+      }
+      return true;
+    };
+    for (let i = 0; i < size; i++) {
+      for (let j = 0; j + 11 <= size; j++) {
+        if (matchAt(pat, i, j, true, false) || matchAt(pat2, i, j, true, false)) p += 40;
+        if (matchAt(pat, i, j, true, true) || matchAt(pat2, i, j, true, true)) p += 40;
+      }
+    }
+    for (let j = 0; j < size; j++) {
+      for (let i = 0; i + 11 <= size; i++) {
+        if (matchAt(pat, i, j, false, false) || matchAt(pat2, i, j, false, false)) p += 40;
+        if (matchAt(pat, i, j, false, true) || matchAt(pat2, i, j, false, true)) p += 40;
+      }
+    }
+    let dark = 0;
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) dark += m[r][c];
+    const ratio = dark * 100 / (size * size);
+    p += Math.floor(Math.abs(ratio - 50) / 5) * 10;
+    return p;
+  }
+
+  /* --- 对外：生成二维码矩阵 --- */
+  function make(text) {
+    const bytes = utf8(String(text));
+    let v = 0;
+    for (let i = 1; i <= 10; i++) if (bytes.length <= capacityBytes(i)) { v = i; break; }
+    if (!v) throw new Error('内容过长，超出本生成器的容量');
+    const cw = toCodewords(bytes, v);
+    let best = null;
+    for (let mask = 0; mask < 8; mask++) {
+      const m = build(v, cw, mask);
+      const p = penalty(m);
+      if (!best || p < best.p) best = { m, mask, p };
+    }
+    return { size: best.m.length, modules: best.m, version: v, mask: best.mask };
+  }
+
+  /* --- 画到 canvas（含 4 模块静默区） --- */
+  function draw(canvas, text, px) {
+    const q = make(text);
+    const quiet = 4, total = q.size + quiet * 2;
+    const unit = Math.max(1, Math.floor((px || 252) / total));
+    const dim = unit * total;
+    canvas.width = dim; canvas.height = dim;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, dim, dim);
+    ctx.fillStyle = '#1E2024';
+    for (let r = 0; r < q.size; r++) for (let c = 0; c < q.size; c++) {
+      if (q.modules[r][c]) ctx.fillRect((c + quiet) * unit, (r + quiet) * unit, unit, unit);
+    }
+    return q;
+  }
+
+  return { make, draw, capacityBytes, rsEncode, genPoly, bch15, bch18, maskFn, _ver: VER, _utf8: utf8 };
+})();
+/* ============================================================
+   计分：五维百分比、四字母标签、隐藏称号
+   ============================================================ */
+
+const MAX_ABS = 6; /* 每特质 3 题 × 单题最大绝对权重 2 */
+
+/* 天气符号只取决于分数高低，语义诚实：这一维今天是晴还是阴 */
+const weatherOf = pct => (pct >= 66 ? 'sun' : (pct <= 34 ? 'cloud' : 'suncloud'));
+
+function computeResult(answers) {
+  const T = {};
+  TRAITS.forEach(t => {
+    const ws = [];
+    STORY.forEach((s, i) => { if (s.trait === t.k) ws.push(answers[i]); });
+    const raw = ws.reduce((a, b) => a + b, 0);
+    const pct = Math.round((raw + MAX_ABS) / (2 * MAX_ABS) * 100);
+    T[t.k] = {
+      ws: ws, raw: raw, pct: pct,
+      spread: Math.max.apply(null, ws) - Math.min.apply(null, ws),
+      high: pct >= 50,
+      swing: Math.abs(pct - 50) <= 8
+    };
+    T[t.k].firm = T[t.k].spread <= 1;
+    T[t.k].weather = weatherOf(pct);
+  });
+
+  /* 四字母只是记忆锚点：E/I←外向性、N/S←开放性、F/T←宜人性、J/P←尽责性 */
+  const code =
+    (T.EXT.high ? 'E' : 'I') +
+    (T.OPE.high ? 'N' : 'S') +
+    (T.AGR.high ? 'F' : 'T') +
+    (T.CON.high ? 'J' : 'P');
+
+  /* 隐藏称号：偏离最远的一维（并列时按 TRAITS 顺序取先出现的）× 该维作答跨度 */
+  let bestKey = TRAITS[0].k, bestDist = -1;
+  TRAITS.forEach(t => {
+    const d = Math.abs(T[t.k].pct - 50);
+    if (d > bestDist) { bestDist = d; bestKey = t.k; }
+  });
+  const dir = T[bestKey].pct >= 50 ? 'hi' : 'lo';
+  const styleKey = T[bestKey].firm ? 'firm' : 'loose';
+  const tdef = TRAITS.filter(t => t.k === bestKey)[0];
+  const titleDef = TITLES[bestKey + '-' + dir];
+
+  const why = tdef.name + '是你今天偏离 50% 最远的一维（' + T[bestKey].pct + '%）。' +
+    (T[bestKey].firm
+      ? '这一维的三道题你答得相当一致，几乎没有自相矛盾。'
+      : '这一维的三道题跨度不小——你自己也在来回摆动。');
+
+  return {
+    T: T, code: code, type: TYPES[code],
+    title: titleDef.name, titleLine: titleDef[styleKey], titleWhy: why,
+    extreme: bestKey, firm: T[bestKey].firm
+  };
+}
+
+/* 供浏览器与测试脚本共用 */
+(function (root) {
+  root.PT = {
+    TRAITS: TRAITS, STORY: STORY, TYPES: TYPES, TITLES: TITLES,
+    STAGE_LABEL: STAGE_LABEL, MAX_ABS: MAX_ABS,
+    QR: QR, computeResult: computeResult, weatherOf: weatherOf,
+    options: function (i) { return STORY[i].opts.map(o => o.w); }
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+
+<script id="app">
+(function () {
+  'use strict';
+  var TRAITS = PT.TRAITS, STORY = PT.STORY, TYPES = PT.TYPES, TITLES = PT.TITLES, QR = PT.QR;
+  var $ = function (id) { return document.getElementById(id); };
+  var REDUCE = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var STAGE_OF = { dawn: '破晓', morning: '上午', noon: '午后', dusk: '黄昏', night: '深夜' };
+
+  /* ============================================================
+     15 张手绘插画（统一 2.5px 圆头描边，只用限色板）
+     .drift / .vpos / .vneg = 随作答变化的画面细节
+     ============================================================ */
+  var ART = {
+    /* 1 闹钟响了 */
+    alarm:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln" x="214" y="22" width="82" height="78" rx="2"/>' +
+      '<path class="ln2" d="M255 22v78M214 61h82"/>' +
+      '<circle class="drift ac" cx="236" cy="43" r="12"/>' +
+      '<rect class="ln" x="22" y="118" width="208" height="52" rx="9"/>' +
+      '<path class="ln" d="M152 118q44-22 78 2"/>' +
+      '<rect class="fl" x="42" y="86" width="64" height="32" rx="16"/>' +
+      '<circle class="ln" cx="126" cy="102" r="22"/>' +
+      '<path class="ln2" d="M116 96q5 4 10 0"/>' +
+      '<path class="vpos ln2" d="M118 108q8 7 16 0"/>' +
+      '<path class="vneg ln2" d="M116 112h20"/>' +
+      '<path class="ln" d="M150 118q44-14 80 6"/>' +
+      '<path class="vneg2 ln" d="M136 112q52-28 112-2"/>' +
+      '<rect class="ln2" x="248" y="118" width="34" height="52" rx="5"/>' +
+      '<path class="vpos2 ac" d="M268 128l-9 17h8l-5 15 13-19h-8z"/>' +
+      '</svg>',
+
+    /* 2 站在衣柜前 */
+    closet:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln" x="56" y="20" width="208" height="150" rx="4"/>' +
+      '<path class="ln" d="M160 20v150"/>' +
+      '<circle class="ln2" cx="150" cy="94" r="4"/><circle class="ln2" cx="170" cy="94" r="4"/>' +
+      '<path class="lt" d="M74 54h62M184 54h62"/>' +
+      '<path class="ln" d="M92 56l-16 22v60h48v-60l-16-22z"/>' +
+      '<path class="ln2" d="M92 56q8 13 16 0"/>' +
+      '<path class="ln" d="M200 56l-18 24v58h48v-58l-18-24z"/>' +
+      '<path class="ln2" d="M200 56l7 9 7-9"/>' +
+      '<g class="vpos2"><path class="acl" d="M212 62h16"/><rect x="228" y="52" width="16" height="21" rx="2" fill="var(--bg)" stroke="var(--seal)" stroke-width="2.2"/>' +
+      '<path class="slt" d="M236 52v-6"/></g>' +
+      '<g class="vneg2"><circle class="slt" cx="104" cy="120" r="4"/><circle class="slt" cx="118" cy="132" r="3"/></g>' +
+      '<path class="lt" d="M44 174h232"/>' +
+      '</svg>',
+
+    /* 3 地铁上被踩了一脚 */
+    metro:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln" x="26" y="18" width="118" height="152" rx="5"/>' +
+      '<path class="lt" d="M40 32h90v54h-90z"/>' +
+      '<path class="ln2" d="M85 86v84"/>' +
+      '<circle class="ln2" cx="78" cy="120" r="3.2"/>' +
+      '<path class="ln2" d="M176 20v24M216 20v24M256 20v24"/>' +
+      '<circle class="ln" cx="176" cy="55" r="9.5"/><circle class="ln" cx="216" cy="55" r="9.5"/><circle class="ln" cx="256" cy="55" r="9.5"/>' +
+      '<circle class="ln" cx="194" cy="112" r="16"/>' +
+      '<path class="ln" d="M166 174q28-36 56 0"/>' +
+      '<circle class="ln" cx="252" cy="120" r="13"/>' +
+      '<path class="ln" d="M230 174q22-30 44 0"/>' +
+      '<g class="vneg"><path class="slt" d="M236 92l10-13M250 94l3-15M264 92l-9-13"/></g>' +
+      '<g class="vpos"><path class="ln2" d="M148 66q22-16 44 0"/><path class="ln2" d="M154 70v6M186 70v6"/></g>' +
+      '<g class="vneg2"><path class="slt" d="M198 148l10-10M208 148l-10-10"/></g>' +
+      '</svg>',
+
+    /* 4 工位上弹出的一条消息 */
+    desk:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln" x="16" y="152" width="288" height="11" rx="4"/>' +
+      '<rect class="ln" x="54" y="26" width="196" height="120" rx="6"/>' +
+      '<path class="lt" d="M66 38h172v96H66z"/>' +
+      '<path class="ln2" d="M78 56h70M78 74h106M78 92h46"/>' +
+      '<rect x="148" y="96" width="116" height="56" rx="9" fill="var(--bg)" stroke="var(--line)" stroke-width="2.5"/>' +
+      '<path class="ln2" d="M148 134l-12 12v-12"/>' +
+      '<path class="ln2" d="M162 114h58M162 130h34"/>' +
+      '<g class="vpos2"><path class="acl" d="M242 90l6-13"/></g>' +
+      '<g class="vneg2"><path class="slt" d="M238 104v16M238 126v3"/></g>' +
+      '<path class="lt" d="M266 152v-14h22v14"/>' +
+      '</svg>',
+
+    /* 5 会上被点名 */
+    meeting:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln" x="94" y="14" width="132" height="60" rx="2"/>' +
+      '<path class="lt" d="M104 24h112v40H104z"/>' +
+      '<path class="acl" d="M118 38h44M118 52h58"/>' +
+      '<path class="dash" d="M120 76l-38 76M200 76l38 76"/>' +
+      '<ellipse class="ln" cx="160" cy="166" rx="124" ry="15"/>' +
+      '<circle class="ln" cx="70" cy="116" r="14"/>' +
+      '<path class="ln" d="M46 166q24-30 48 0"/>' +
+      '<circle class="ln" cx="160" cy="108" r="17"/>' +
+      '<path class="ln" d="M130 166q30-38 60 0"/>' +
+      '<circle class="ln" cx="250" cy="116" r="14"/>' +
+      '<path class="ln" d="M226 166q24-30 48 0"/>' +
+      '<g class="vpos"><circle class="acl" cx="160" cy="108" r="27"/><path class="ln2" d="M146 72h28"/></g>' +
+      '<g class="vneg"><path class="slt" d="M150 74q10-9 20 0"/><path class="slt" d="M144 62l-7-9M176 62l7-9"/></g>' +
+      '</svg>',
+
+    /* 6 中午吃什么 */
+    lunch:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln2" x="20" y="22" width="104" height="146" rx="11"/>' +
+      '<path class="lt" d="M30 32h84v126H30z"/>' +
+      '<path class="ln2" d="M42 48h60"/>' +
+      '<rect class="lt" x="42" y="58" width="62" height="17" rx="7"/>' +
+      '<rect class="lt" x="42" y="82" width="48" height="17" rx="7"/>' +
+      '<rect class="lt" x="42" y="106" width="58" height="17" rx="7"/>' +
+      '<path class="ln" d="M170 136q42-20 84 0v26h-84z"/>' +
+      '<path class="ln2" d="M186 128q6-11 15-2 6-11 15-2"/>' +
+      '<rect x="160" y="76" width="106" height="44" rx="5" fill="var(--bg)" stroke="var(--line)" stroke-width="2.5"/>' +
+      '<path class="ln2" d="M172 90h82M172 106h50"/>' +
+      '<g class="vpos"><path class="acl" d="M256 62l7-16"/><circle class="ac" cx="266" cy="40" r="7"/></g>' +
+      '<g class="vneg"><path class="slt" d="M262 62q-6-12 0-20"/></g>' +
+      '<path class="lt" d="M16 176h288"/>' +
+      '</svg>',
+
+    /* 7 同事来求助 */
+    help:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln2" x="176" y="30" width="120" height="80" rx="5"/>' +
+      '<path class="lt" d="M186 40h100v60H186z"/>' +
+      '<path class="ln2" d="M186 58h100M186 76h100M226 40v60M266 40v60"/>' +
+      '<rect class="ln" x="24" y="112" width="272" height="10" rx="4"/>' +
+      '<circle class="ln" cx="76" cy="76" r="17"/>' +
+      '<path class="ln" d="M46 122q30-34 60 0"/>' +
+      '<circle class="ln" cx="150" cy="80" r="16"/>' +
+      '<path class="ln" d="M122 122q28-32 56 0"/>' +
+      '<path class="ln2" d="M108 96q22-12 40-4"/>' +
+      '<g class="vpos"><path class="ln2" d="M100 66q22-18 44 0"/><path class="acl" d="M118 48h44"/></g>' +
+      '<g class="vneg"><path class="slt" d="M132 60l-14-12"/></g>' +
+      '<path class="lt" d="M16 176h288"/>' +
+      '</svg>',
+
+    /* 8 朋友约局 */
+    invite:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln2" x="22" y="20" width="96" height="150" rx="12"/>' +
+      '<path class="lt" d="M32 30h76v130H32z"/>' +
+      '<rect x="42" y="46" width="58" height="26" rx="9" fill="var(--bg)" stroke="var(--line)" stroke-width="2.2"/>' +
+      '<rect x="52" y="82" width="48" height="22" rx="9" fill="var(--line)" stroke="none"/>' +
+      '<path class="ln2" d="M46 120h52M46 136h36"/>' +
+      '<path class="ln" d="M160 168v-52h22v52M198 168v-72h26v72M240 168v-44h20v44M274 168v-62h24v62"/>' +
+      '<path class="lt" d="M150 168h164"/>' +
+      '<path class="dash" d="M138 178q70-26 158-6"/>' +
+      '<g class="vpos"><circle class="ac" cx="140" cy="124" r="9"/><path class="ln2" d="M140 133v20M128 145h24"/></g>' +
+      '<g class="vneg"><rect class="ln2" x="124" y="144" width="32" height="16" rx="4"/><path class="slt" d="M131 140h18"/><path class="slt" d="M140 118h11l-11 11h11"/></g>' +
+      '</svg>',
+
+    /* 9 下班路上的耳机 */
+    headphone:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<path class="ln" d="M92 108a68 68 0 0 1 136 0"/>' +
+      '<rect class="ln" x="76" y="98" width="30" height="48" rx="12"/>' +
+      '<rect class="ln" x="214" y="98" width="30" height="48" rx="12"/>' +
+      '<path class="acl" d="M250 92a46 46 0 0 1 -2 60"/>' +
+      '<path class="lt" d="M268 76a66 66 0 0 1 -2 92"/>' +
+      '<circle class="drift ac" cx="160" cy="34" r="6"/>' +
+      '<rect x="30" y="14" width="68" height="68" rx="6" fill="none" stroke="var(--line)" stroke-width="2.5"/>' +
+      '<path class="acl" d="M40 28h34M40 44h46M40 60h24"/>' +
+      '<g class="vpos"><path class="slt" d="M120 160h14M146 160h22M180 160h12"/><circle class="ac" cx="164" cy="160" r="6"/></g>' +
+      '<g class="vneg"><circle class="ln" cx="160" cy="162" r="22"/><circle class="lt" cx="160" cy="162" r="6"/></g>' +
+      '</svg>',
+
+    /* 10 超市里的一次犹豫 */
+    market:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<path class="ln" d="M24 44h272M24 96h272M24 148h272"/>' +
+      '<rect class="lt" x="40" y="24" width="22" height="20" rx="3"/><rect class="lt" x="72" y="24" width="22" height="20" rx="3"/>' +
+      '<rect class="lt" x="40" y="120" width="26" height="28" rx="3"/><rect class="lt" x="78" y="120" width="26" height="28" rx="3"/>' +
+      '<rect x="168" y="60" width="34" height="36" rx="4" fill="var(--bg)" stroke="var(--line)" stroke-width="2.5"/>' +
+      '<rect x="216" y="60" width="34" height="36" rx="4" fill="var(--marker)" stroke="var(--line)" stroke-width="2.5"/>' +
+      '<path class="ln2" d="M176 74h18M176 84h12"/>' +
+      '<path class="ln2" d="M224 74h18M224 84h12"/>' +
+      '<g class="vpos2"><path class="slt" d="M216 104h34"/><path class="slt" d="M233 104v10"/></g>' +
+      '<path class="ln" d="M118 132h44l14 42h-64z"/>' +
+      '<path class="ln2" d="M140 132v-16h20"/>' +
+      '<circle class="ln2" cx="124" cy="180" r="5"/><circle class="ln2" cx="170" cy="180" r="5"/>' +
+      '<g class="vneg2"><circle class="slt" cx="196" cy="130" r="4"/><circle class="slt" cx="212" cy="142" r="3"/><circle class="slt" cx="204" cy="118" r="3"/></g>' +
+      '</svg>',
+
+    /* 11 回到家只想瘫着 */
+    sofa:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<path class="ln" d="M36 96v-16a14 14 0 0 1 14-14h140a14 14 0 0 1 14 14v16"/>' +
+      '<rect class="ln" x="28" y="96" width="184" height="46" rx="14"/>' +
+      '<path class="ln2" d="M120 66v76"/>' +
+      '<circle class="ln" cx="94" cy="80" r="15"/>' +
+      '<path class="ln" d="M74 110q20-22 40 0"/>' +
+      '<path class="ln2" d="M86 84q8 6 16 0"/>' +
+      '<rect class="ln" x="244" y="44" width="62" height="128" rx="5"/>' +
+      '<path class="ln2" d="M244 92h62"/>' +
+      '<circle class="ln2" cx="298" cy="72" r="3"/>' +
+      '<path class="lt" d="M16 166h288"/>' +
+      '<g class="vpos"><circle class="acl" cx="94" cy="42" r="20"/><path class="acl" d="M82 38q12-8 24 0"/><path class="acl" d="M82 48q12-8 24 0"/></g>' +
+      '<g class="vneg"><path class="slt" d="M130 54h16l-16 16h16"/><path class="slt" d="M154 32h11l-11 11h11"/></g>' +
+      '</svg>',
+
+    /* 12 深夜收到一大段语音 */
+    voice:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln2" x="24" y="34" width="118" height="140" rx="12"/>' +
+      '<path class="lt" d="M34 44h98v120H34z"/>' +
+      '<rect class="ln" x="44" y="60" width="76" height="40" rx="8"/>' +
+      '<path class="ln2" d="M52 74h14M52 84h30"/>' +
+      '<path class="slt" d="M70 76l8 5-8 5z"/>' +
+      '<path class="lt" d="M44 118h76M44 132h54M44 146h66"/>' +
+      '<circle class="lt" cx="252" cy="52" r="26"/>' +
+      '<circle class="ln" cx="262" cy="46" r="24"/>' +
+      '<path class="ln2" d="M170 70l3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/>' +
+      '<path class="ln2" d="M204 108l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>' +
+      '<g class="vpos"><path class="ln" d="M176 130q12-14 24 0M200 130q12-14 24 0"/></g>' +
+      '<g class="vneg"><path class="slt" d="M204 150l8 8 16-18"/></g>' +
+      '</svg>',
+
+    /* 13 划到一条三年前的动态 */
+    memory:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln2" x="26" y="20" width="112" height="150" rx="12"/>' +
+      '<path class="lt" d="M36 30h92v130H36z"/>' +
+      '<rect class="ln" x="46" y="42" width="72" height="58" rx="4"/>' +
+      '<path class="ln2" d="M56 90l14-18 12 12 10-12 16 18z"/>' +
+      '<path class="lt" d="M46 116h72M46 130h44"/>' +
+      '<path class="lt" d="M46 148h60"/>' +
+      '<rect class="ln" x="176" y="92" width="52" height="46" rx="6"/>' +
+      '<path class="ln2" d="M228 104h16a8 8 0 0 1 0 16h-16"/>' +
+      '<path class="lt" d="M186 136h32"/>' +
+      '<g class="vneg"><path class="dash" d="M190 86q6-12 0-20M204 86q6-14 0-24"/></g>' +
+      '<g class="vpos"><circle class="ln" cx="262" cy="58" r="20"/><path class="ln2" d="M262 46v14l10 6"/></g>' +
+      '<g class="vneg2"><path class="slt" d="M250 60h24M262 48v12l9 5"/></g>' +
+      '</svg>',
+
+    /* 14 睡前设闹钟 */
+    snooze:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<rect class="ln" x="18" y="112" width="152" height="54" rx="10"/>' +
+      '<path class="ln" d="M126 112q26-18 42 2"/>' +
+      '<rect class="fl" x="36" y="80" width="56" height="32" rx="15"/>' +
+      '<circle class="ln" cx="112" cy="94" r="20"/>' +
+      '<path class="ln2" d="M112 88q6 4 12 0"/>' +
+      '<rect class="ln2" x="212" y="34" width="76" height="128" rx="9"/>' +
+      '<path class="lt" d="M222 44h56v108h-56z"/>' +
+      '<path class="ln2" d="M232 60h36M232 78h24"/>' +
+      '<path class="ln" d="M228 96q22-16 44 0"/>' +
+      '<path class="ln2" d="M250 84v-6"/>' +
+      '<path class="ln2" d="M62 132v12M80 132v12"/>' +
+      '<g class="vpos"><path class="ln" d="M180 156v-16h20v16"/><path class="ln2" d="M190 156v-30"/></g>' +
+      '<g class="vneg"><path class="slt" d="M232 104h40M232 116h40M232 128h40"/><path class="slt" d="M248 136l6 8-6 8"/></g>' +
+      '</svg>',
+
+    /* 15 有人问你今天过得怎么样 */
+    goodnight:
+      '<svg viewBox="0 0 320 190" aria-hidden="true">' +
+      '<circle class="lt" cx="252" cy="50" r="28"/>' +
+      '<circle class="ln" cx="264" cy="44" r="25"/>' +
+      '<path class="ln2" d="M186 76l3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/>' +
+      '<path class="ln2" d="M216 118l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>' +
+      '<rect class="ln2" x="26" y="96" width="92" height="70" rx="12"/>' +
+      '<path class="lt" d="M36 106h72v50H36z"/>' +
+      '<rect x="60" y="24" width="120" height="56" rx="12" fill="var(--bg)" stroke="var(--line)" stroke-width="2.5"/>' +
+      '<path class="ln2" d="M74 44h92M74 60h40"/>' +
+      '<path class="ln2" d="M112 80l-8 12v-12"/>' +
+      '<g class="vpos"><rect x="130" y="120" width="140" height="52" rx="12" fill="var(--marker)" stroke="var(--line)" stroke-width="2.5"/>' +
+      '<path class="ln2" d="M144 138h112M144 154h72"/></g>' +
+      '<g class="vneg"><rect x="150" y="126" width="44" height="40" rx="10" fill="var(--bg)" stroke="var(--line)" stroke-width="2.5"/>' +
+      '<path class="ln2" d="M164 146h16"/></g>' +
+      '<path class="lt" d="M16 178h288"/>' +
+      '</svg>'
+  };
+
+  /* ============================================================
+     天气符号（与卡片上的矢量画法保持同一套几何）
+     ============================================================ */
+  var WX_SVG = {
+    sun: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5.2" fill="#FFD84D" stroke="currentColor" stroke-width="1.8"/><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 1.8v2.4M12 19.8v2.4M1.8 12h2.4M19.8 12h2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"/></g></svg>',
+    suncloud: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9.4" cy="8.4" r="4" fill="#FFD84D" stroke="currentColor" stroke-width="1.8"/><path d="M4 19.6a3.6 3.6 0 0 1 0-7.2 5.2 5.2 0 0 1 9.6-1.6 5 5 0 0 1 2.9 8.8z" fill="var(--bg)" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    cloud: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18.6a3.8 3.8 0 0 1 0-7.6 5.6 5.6 0 0 1 10.4-1.7 5.2 5.2 0 0 1 3.1 9.3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
+  };
+
+  /* ============================================================
+     状态
+     ============================================================ */
+  var idx = 0;
+  var ans = [];
+  for (var q = 0; q < STORY.length; q++) ans.push(null);
+  var typing = null, typeFull = '', beatTimer = null, eggTimer = null, result = null, memUrl = '';
+  var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+
+  /* ============================================================
+     日光弧线：进度就是时间
+     ============================================================ */
+  var arcRail = $('arc-rail'), arcFill = $('arc-fill'), arcOrb = $('arc-orb'), arcLen = 320;
+  function arcInit() {
+    try { arcLen = arcRail.getTotalLength(); } catch (e) { arcLen = 320; }
+    arcFill.style.strokeDasharray = String(arcLen);
+    arcFill.style.strokeDashoffset = String(arcLen);
+  }
+  function arcSet(p) {
+    arcFill.style.strokeDashoffset = String(arcLen * (1 - p));
+    var pt;
+    try { pt = arcRail.getPointAtLength(arcLen * p); } catch (e) { pt = { x: 12 + 312 * p, y: 34 - 28 * Math.sin(Math.PI * p) }; }
+    arcOrb.setAttribute('transform', 'translate(' + (pt.x - 12).toFixed(2) + ',' + (pt.y - 34).toFixed(2) + ')');
+    $('glyph-sun').classList.toggle('on', p > 0.06);
+    $('glyph-moon').classList.toggle('on', p > 0.88);
+  }
+
+  /* ============================================================
+     剧情页
+     ============================================================ */
+  function setStage(s) { document.body.setAttribute('data-stage', s); }
+
+  function goScene(i, keep) {
+    idx = i;
+    var sc = STORY[i];
+    setStage(sc.stage);
+    $('arc-step').textContent = pad(i + 1) + ' / ' + STORY.length;
+    $('arc-clock').textContent = sc.clock;
+    arcSet((i + 1) / STORY.length);
+    $('sc-label').textContent = STAGE_OF[sc.stage];
+    $('sc-sfx').textContent = sc.sfx;
+    $('comic-art').innerHTML = ART[sc.art];
+    $('comic').removeAttribute('data-v');
+    $('egg').classList.remove('on');
+    $('question').textContent = sc.q;
+    $('btn-back').hidden = (i === 0);
+    clearTimeout(beatTimer);
+    $('beat').classList.remove('on');
+    renderOptions(sc, keep ? ans[i] : null);
+    if (keep && ans[i] !== null) $('comic').setAttribute('data-v', sc.opts[ans[i]].w > 0 ? 'pos' : 'neg');
+    typewrite(sc.narr);
+    window.scrollTo(0, 0);
+  }
+
+  function renderOptions(sc, sel) {
+    var ul = $('options'), tags = ['A', 'B', 'C', 'D'];
+    ul.innerHTML = '';
+    sc.opts.forEach(function (o, k) {
+      var li = document.createElement('li');
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'opt' + (sel === k ? ' sel' : '');
+      b.innerHTML = '<i class="swipe" aria-hidden="true"></i>' +
+        '<span class="tag">' + tags[k] + '</span>' +
+        '<span>' + o.t + '</span>';
+      b.addEventListener('click', function () { choose(k); });
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+  }
+
+  function choose(k) {
+    var sc = STORY[idx];
+    ans[idx] = k;
+    var w = sc.opts[k].w;
+    var btns = $('options').querySelectorAll('.opt');
+    for (var j = 0; j < btns.length; j++) {
+      btns[j].classList.toggle('sel', j === k);
+      btns[j].disabled = true;
+    }
+    $('comic').setAttribute('data-v', w > 0 ? 'pos' : 'neg');
+    $('beat-text').textContent = sc.opts[k].b;
+    $('beat').classList.add('on');
+    clearTimeout(beatTimer);
+    beatTimer = setTimeout(function () {
+      $('beat').classList.remove('on');
+      if (idx < STORY.length - 1) goScene(idx + 1, false);
+      else finish();
+    }, REDUCE ? 240 : 2000);
+  }
+
+  function typewrite(text) {
+    var el = $('narration'), hint = $('skiphint');
+    clearInterval(typing);
+    typing = null;
+    typeFull = text;
+    if (REDUCE) { el.textContent = text; hint.style.visibility = 'hidden'; return; }
+    el.textContent = '';
+    hint.style.visibility = 'visible';
+    var i = 0;
+    typing = setInterval(function () {
+      i++;
+      el.textContent = text.slice(0, i);
+      if (i >= text.length) { clearInterval(typing); typing = null; hint.style.visibility = 'hidden'; }
+    }, 33);
+  }
+  function skipType() {
+    if (typing) {
+      clearInterval(typing); typing = null;
+      $('narration').textContent = typeFull;
+      $('skiphint').style.visibility = 'hidden';
+    }
+  }
+
+  /* 长按插画触发隐藏吐槽 */
+  function eggShow() {
+    var e = STORY[idx].egg;
+    if (!e) return;
+    var box = $('egg');
+    box.textContent = e;
+    box.classList.add('on');
+  }
+  function eggHide() { $('egg').classList.remove('on'); }
+  function bindEgg(box) {
+    box.addEventListener('touchstart', function () { clearTimeout(eggTimer); eggTimer = setTimeout(eggShow, 430); }, { passive: true });
+    box.addEventListener('touchend', function () { clearTimeout(eggTimer); setTimeout(eggHide, 2200); });
+    box.addEventListener('touchmove', function () { clearTimeout(eggTimer); eggHide(); }, { passive: true });
+    box.addEventListener('mousedown', function () { clearTimeout(eggTimer); eggTimer = setTimeout(eggShow, 430); });
+    box.addEventListener('mouseup', function () { clearTimeout(eggTimer); setTimeout(eggHide, 2200); });
+    box.addEventListener('mouseleave', function () { clearTimeout(eggTimer); eggHide(); });
+    box.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
+  /* ============================================================
+     揭晓 → 结果页
+     ============================================================ */
+  function finish() {
+    var weights = STORY.map(function (s, i) { return s.opts[ans[i]].w; });
+    result = PT.computeResult(weights);
+    clearInterval(typing);
+    $('reveal').classList.add('on');
+    setTimeout(function () {
+      $('reveal').classList.remove('on');
+      $('v-story').classList.remove('on');
+      $('v-result').classList.add('on');
+      setStage('dawn');
+      renderResult();
+      window.scrollTo(0, 0);
+    }, REDUCE ? 60 : 950);
+  }
+
+  function renderResult() {
+    var r = result, tp = r.type;
+    $('r-code').textContent = r.code.split('').join(' ');
+    $('r-tname').textContent = tp.name;
+    $('r-title').textContent = r.title;
+    $('r-titlewhy').textContent = r.titleLine + r.titleWhy;
+    $('r-main').textContent = tp.main;
+    $('r-quote').textContent = tp.quote;
+
+    /* 五维天气栏 */
+    var wx = $('r-weather');
+    wx.innerHTML = '';
+    TRAITS.forEach(function (t) {
+      var d = r.T[t.k];
+      var row = document.createElement('div');
+      row.className = 'wrow' + (d.swing ? ' swing' : '');
+      row.innerHTML = WX_SVG[d.weather] +
+        '<div><div class="wname">' + t.name +
+        '<small>' + (d.high ? t.hiName : t.loName) + (d.swing ? '（摇摆型）' : '') + '</small></div>' +
+        '<div class="wbar"><i></i><em></em></div></div>' +
+        '<div class="wpct">' + d.pct + '%<small>' + (d.high ? t.hi + ' 一侧' : t.lo + ' 一侧') + '</small></div>';
+      wx.appendChild(row);
+    });
+
+    /* 五个特质的解读 */
+    var tb = $('r-traits');
+    tb.innerHTML = '<h3>五维剖面，一个一个人说</h3>';
+    TRAITS.forEach(function (t) {
+      var d = r.T[t.k];
+      var div = document.createElement('div');
+      div.className = 'tblock';
+      div.innerHTML = '<h4>' + t.name + '<span class="pole">' + d.pct + '%，' +
+        (d.high ? t.hiName : t.loName) + '</span></h4><p>' + (d.high ? t.hiText : t.loText) + '</p>';
+      tb.appendChild(div);
+    });
+
+    var good = $('r-good'), bad = $('r-bad');
+    good.innerHTML = ''; bad.innerHTML = '';
+    tp.good.forEach(function (s) { var li = document.createElement('li'); li.textContent = s; good.appendChild(li); });
+    tp.bad.forEach(function (s) { var li = document.createElement('li'); li.textContent = s; bad.appendChild(li); });
+
+    var how = $('r-how');
+    how.innerHTML =
+      '<div class="pair"><span class="k">朋友</span><span>' + tp.friend + '</span></div>' +
+      '<div class="pair"><span class="k">恋人</span><span>' + tp.love + '</span></div>';
+
+    $('r-fine').textContent =
+      '这五个百分比是连续分数，不是把你切成两半——所以中间那一段（42%–58%）我们标成了“摇摆型”，那不代表你没个性，' +
+      '只代表这一维今天两边的理由都成立。15 题属于短量表，信度大约 0.65–0.75：够描述此刻的你，不够定义你；' +
+      '隔两周再测出现浮动是正常的。页面不收集任何数据，结果也不是临床诊断。';
+
+    /* 揭晓动画：印章落下 + 五维条生长 */
+    var stamp = $('r-stamp');
+    stamp.classList.remove('on');
+    void stamp.offsetWidth;
+    setTimeout(function () { stamp.classList.add('on'); }, REDUCE ? 0 : 420);
+    setTimeout(function () {
+      var bars = $('r-weather').querySelectorAll('.wbar i');
+      TRAITS.forEach(function (t, i) {
+        if (bars[i]) bars[i].style.width = r.T[t.k].pct + '%';
+      });
+    }, REDUCE ? 0 : 900);
+
+    makeCard();
+    refreshCoverQR();
+  }
+
+  /* ============================================================
+     分享链接（只存你自己填的那个网址，不存任何作答）
+     ============================================================ */
+  function savedUrl() {
+    try { return localStorage.getItem('pt_share_url') || memUrl; } catch (e) { return memUrl; }
+  }
+  function storeUrl(v) {
+    memUrl = v;
+    try { localStorage.setItem('pt_share_url', v); } catch (e) {}
+  }
+  function shareUrl() {
+    var s = savedUrl();
+    if (s) return s;
+    if (/^https?:\/\//i.test(location.href)) return location.href;
+    return '';
+  }
+  function refreshCoverQR() {
+    var cv = $('qr-cover'), note = $('qr-cover-note'), url = shareUrl();
+    if (!url) {
+      cv.classList.add('hide');
+      note.textContent = '还没有可以分享的网址。把页面传到任意静态托管后，点“设置分享链接”填进来，二维码就出来了。';
+      return;
+    }
+    try {
+      QR.draw(cv, url, 252);
+      cv.classList.remove('hide');
+      note.textContent = '扫一下，让朋友也走一遍今天。';
+    } catch (e) {
+      cv.classList.add('hide');
+      note.textContent = '这个链接太长了，二维码生成不了，换短一点的网址试试。';
+    }
+  }
+
+  /* ============================================================
+     今日人格日报（Canvas 1080×1440）
+     ============================================================ */
+  var INK = '#1E2024', PAPER = '#F7F6F2', MARK = '#FFD84D', SEAL = '#C8402F', DIM = '#5A6470';
+  var CFONT = '"PingFang SC","HarmonyOS Sans SC","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei",sans-serif';
+
+  function rrect(g, x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  }
+
+  function todayStr() {
+    var d = new Date();
+    var wd = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][d.getDay()];
+    return d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日　' + wd;
+  }
+
+  /* 天气符号用矢量画，不用 emoji —— 保证在任何手机上长得一样 */
+  function drawWx(g, kind, cx, cy) {
+    g.save();
+    g.strokeStyle = INK; g.lineWidth = 3; g.lineCap = 'round'; g.lineJoin = 'round';
+    if (kind === 'sun' || kind === 'suncloud') {
+      var sx = kind === 'sun' ? cx : cx - 7, sy = kind === 'sun' ? cy - 4 : cy - 9;
+      g.beginPath(); g.arc(sx, sy, kind === 'sun' ? 12 : 10, 0, Math.PI * 2);
+      g.fillStyle = MARK; g.fill(); g.stroke();
+      if (kind === 'sun') {
+        for (var i = 0; i < 8; i++) {
+          var ang = i * Math.PI / 4;
+          g.beginPath();
+          g.moveTo(sx + Math.cos(ang) * 17, sy + Math.sin(ang) * 17);
+          g.lineTo(sx + Math.cos(ang) * 24, sy + Math.sin(ang) * 24);
+          g.stroke();
+        }
+      }
+    }
+    if (kind === 'suncloud' || kind === 'cloud') {
+      var y2 = kind === 'cloud' ? cy + 2 : cy + 8;
+      g.beginPath();
+      g.arc(cx - 16, y2, 12, Math.PI * 0.5, Math.PI * 1.5);
+      g.arc(cx + 1, y2 - 14, 16, Math.PI, Math.PI * 2);
+      g.arc(cx + 19, y2, 12, Math.PI * 1.5, Math.PI * 0.5);
+      g.closePath();
+      g.fillStyle = PAPER; g.fill(); g.stroke();
+    }
+    g.restore();
+  }
+
+  function drawCard() {
+    var r = result;
+    if (!r) return;
+    var cv = $('card'), g = cv.getContext('2d');
+    var W = 1080, H = 1440, M = 84;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
+
+    /* 一天的色谱，印在报眉上 */
+    var DAY = ['#E4EDF2', '#F1F3EA', '#FBF0DA', '#F5E0D2', '#2C3350'];
+    for (var i = 0; i < 5; i++) { g.fillStyle = DAY[i]; g.fillRect(W / 5 * i, 0, W / 5 + 1, 14); }
+
+    function font(w, s) { g.font = w + ' ' + s + 'px ' + CFONT; }
+    function wrap(text, maxW) {
+      var lines = [], cur = '';
+      for (var k = 0; k < text.length; k++) {
+        var ch = text.charAt(k);
+        if (cur && g.measureText(cur + ch).width > maxW) { lines.push(cur); cur = ch; }
+        else cur += ch;
+      }
+      if (cur) lines.push(cur);
+      return lines;
+    }
+
+    /* 报头 */
+    g.textAlign = 'left';
+    font(900, 52); g.fillStyle = INK; g.fillText('今日人格日报', M, 108);
+    font(400, 25); g.fillStyle = DIM; g.textAlign = 'right'; g.fillText(todayStr(), W - M, 106);
+    g.textAlign = 'left';
+    g.fillStyle = 'rgba(30,32,36,.25)'; g.fillRect(M, 138, W - 2 * M, 2);
+
+    /* 头条 */
+    font(900, 94); g.fillStyle = INK;
+    var y = 274;
+    wrap(r.type.name, W - 2 * M).forEach(function (l) { g.fillText(l, M, y); y += 106; });
+
+    font(800, 30); g.fillStyle = DIM;
+    var cx = M;
+    r.code.split('').forEach(function (ch) { g.fillText(ch, cx, y + 4); cx += 46; });
+    font(400, 24);
+    g.fillText('（大五人格映射出的记忆锚点）', cx + 16, y + 4);
+    y += 66;
+
+    /* 金句 */
+    var qLines = wrap(r.type.quote, W - 2 * M - 70);
+    g.fillStyle = MARK;
+    g.fillRect(M, y - 30, 13, qLines.length * 56 + 12);
+    font(700, 34); g.fillStyle = INK;
+    qLines.forEach(function (l, k) { g.fillText(l, M + 40, y + k * 56); });
+    y += qLines.length * 56 + 56;
+
+    /* 今日天气 */
+    g.fillStyle = 'rgba(30,32,36,.25)'; g.fillRect(M, y, W - 2 * M, 2);
+    y += 56;
+    font(800, 26); g.fillStyle = DIM;
+    g.fillText('今 日 天 气', M, y);
+    font(400, 23);
+    g.fillText('每一维今天是晴还是阴', M + 186, y);
+    y += 44;
+
+    TRAITS.forEach(function (t) {
+      var d = r.T[t.k];
+      drawWx(g, d.weather, M + 26, y - 14);
+      font(600, 31); g.fillStyle = INK; g.fillText(t.name, M + 72, y);
+      var bx = M + 268, bw = 500;
+      g.strokeStyle = INK; g.lineWidth = 2.5;
+      rrect(g, bx, y - 17, bw, 19, 9.5); g.stroke();
+      if (d.pct > 0) {
+        g.fillStyle = INK;
+        rrect(g, bx, y - 17, Math.max(bw * d.pct / 100, 9), 19, 9.5); g.fill();
+      }
+      g.fillStyle = 'rgba(30,32,36,.35)';
+      g.fillRect(bx + bw / 2 - 1, y - 23, 2, 31);
+      font(800, 33); g.fillStyle = INK; g.textAlign = 'right';
+      g.fillText(d.pct + '%', W - M, y);
+      g.textAlign = 'left';
+      y += 70;
+    });
+
+    /* 号外贴纸：隐藏称号 */
+    y += 22;
+    font(900, 38);
+    var tw = g.measureText(r.title).width + 64;
+    g.save();
+    g.translate(M + tw / 2, y);
+    g.rotate(-2.4 * Math.PI / 180);
+    g.fillStyle = SEAL;
+    rrect(g, -tw / 2, -36, tw, 64, 6); g.fill();
+    g.fillStyle = '#FFF6F2'; g.textAlign = 'center';
+    g.fillText(r.title, 0, 12);
+    g.restore();
+    g.textAlign = 'left';
+
+    /* 二维码 */
+    var qs = 160, qx = W - M - qs, qy = 1180;
+    var url = shareUrl();
+    g.fillStyle = '#FFFFFF'; g.fillRect(qx - 12, qy - 12, qs + 24, qs + 24);
+    if (url) {
+      try {
+        var qr = QR.make(url);
+        var quiet = 4, total = qr.size + quiet * 2;
+        var unit = Math.floor(qs / total);
+        var off = (qs - unit * total) / 2;
+        g.fillStyle = INK;
+        for (var rr = 0; rr < qr.size; rr++) for (var cc = 0; cc < qr.size; cc++) {
+          if (qr.modules[rr][cc]) {
+            g.fillRect(qx + off + (cc + quiet) * unit, qy + off + (rr + quiet) * unit, unit, unit);
+          }
+        }
+      } catch (e) { /* 链接过长时下方提示会补上 */ }
+    } else {
+      font(400, 20); g.fillStyle = DIM; g.textAlign = 'center';
+      g.fillText('部署后填上链接', qx + qs / 2, qy + qs / 2 - 12);
+      g.fillText('这里就会出现二维码', qx + qs / 2, qy + qs / 2 + 18);
+      g.textAlign = 'left';
+    }
+    font(500, 23); g.fillStyle = DIM; g.textAlign = 'center';
+    g.fillText('扫码测测你今天是什么人', qx + qs / 2, qy + qs + 34);
+    g.textAlign = 'left';
+
+    /* 页脚 */
+    font(500, 23); g.fillStyle = DIM;
+    g.fillText('测量内核：大五人格（Big Five）· 15 题短量表', M, H - M - 46);
+    g.fillText('仅供自我觉察，不构成心理诊断', M, H - M - 10);
+  }
+
+  function makeCard() {
+    if (!result) return;
+    var img = $('cardimg'), cv = $('card');
+    try {
+      drawCard();
+      var data = cv.toDataURL('image/png');
+      if (data && data.length > 100) img.src = data;
+      else throw new Error('empty');
+    } catch (e) {
+      $('card-hint').textContent = '这个浏览器没法把图导出成长按可保存的图片，直接对屏幕截图也一样。';
+      try { drawCard(); } catch (e2) {}
+    }
+  }
+
+  /* ============================================================
+     启动
+     ============================================================ */
+  function init() {
+    arcInit();
+    refreshCoverQR();
+    bindEgg($('comic'));
+
+    $('btn-start').addEventListener('click', function () {
+      $('v-cover').classList.remove('on');
+      $('v-story').classList.add('on');
+      goScene(0, false);
+    });
+    $('btn-back').addEventListener('click', function () {
+      if (idx > 0) goScene(idx - 1, true);
+    });
+    $('narration').addEventListener('click', skipType);
+    $('skiphint').addEventListener('click', skipType);
+
+    $('btn-card').addEventListener('click', function () {
+      makeCard();
+      var box = document.querySelector('.cardpreview');
+      if (box && box.scrollIntoView) box.scrollIntoView({ behavior: REDUCE ? 'auto' : 'smooth', block: 'center' });
+    });
+    $('btn-again').addEventListener('click', function () {
+      for (var i = 0; i < ans.length; i++) ans[i] = null;
+      idx = 0; result = null;
+      $('v-result').classList.remove('on');
+      $('v-cover').classList.add('on');
+      setStage('dawn');
+      $('cardimg').removeAttribute('src');
+      arcSet(0);
+      window.scrollTo(0, 0);
+    });
+
+    var openAbout = function () { $('ov-about').classList.add('on'); };
+    $('btn-about-1').addEventListener('click', openAbout);
+    $('btn-about-2').addEventListener('click', openAbout);
+    $('btn-about-close').addEventListener('click', function () { $('ov-about').classList.remove('on'); });
+
+    $('btn-setshare').addEventListener('click', function () {
+      $('share-url').value = savedUrl();
+      $('share-status').textContent = '';
+      $('ov-share').classList.add('on');
+    });
+    $('btn-share-close').addEventListener('click', function () { $('ov-share').classList.remove('on'); });
+    $('btn-share-save').addEventListener('click', function () {
+      var v = $('share-url').value.trim();
+      if (v && !/^https?:\/\//i.test(v)) {
+        $('share-status').textContent = '网址要以 http:// 或 https:// 开头。';
+        return;
+      }
+      storeUrl(v);
+      $('share-status').textContent = v ? '已保存，二维码更新了。' : '已清空，二维码会改用当前页面地址。';
+      refreshCoverQR();
+      if (result) makeCard();
+    });
+
+    ['ov-about', 'ov-share'].forEach(function (id) {
+      $(id).addEventListener('click', function (e) { if (e.target === this) this.classList.remove('on'); });
+    });
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
